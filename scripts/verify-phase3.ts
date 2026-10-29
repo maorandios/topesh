@@ -68,7 +68,7 @@ const v1 = {
 
 const migrated = parseDatabase(v1)
 assert.ok(migrated)
-assert.equal(migrated.version, 5)
+assert.equal(migrated.version, 7)
 assert.equal(migrated.companies[0]?.isActive, true)
 assert.equal(migrated.customers[0]?.isActive, true)
 assert.equal(migrated.sites[0]?.isActive, true)
@@ -107,7 +107,7 @@ assert.equal(leaderSubmitted.workers[0]?.fullName, "עובד שהוגש")
 assert.equal(leaderSubmitted.checkboxes.find((item) => item.checkboxId === "check-night")?.checked, true)
 assertNoWorkOrder(leaderSubmitted)
 const stored = JSON.parse(storage.getItem(MOCK_DB_KEY) ?? "{}") as { version?: number }
-assert.equal(stored.version, 5)
+assert.equal(stored.version, 7)
 const managerMigrated = getManagerDiary(repo.readDb()!, pending.id)
 assert.equal(managerMigrated?.workOrderNumber, "WO-MIG-1")
 

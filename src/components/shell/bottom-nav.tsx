@@ -13,6 +13,7 @@ import {
 import { useKeyboardOpen } from "@/lib/use-keyboard-open"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
+import { devRoleSwitcherEnabled } from "@/features/dev-role/users"
 import {
   Sheet,
   SheetContent,
@@ -80,7 +81,7 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
               <SheetTitle>{he.nav.menuTitle}</SheetTitle>
               <SheetDescription>{he.appName}</SheetDescription>
             </SheetHeader>
-            <nav className="flex flex-col gap-1 px-4">
+            <nav className="flex flex-1 flex-col gap-1 px-4">
               {menuItems.map((item) => {
                 const active = isNavActive(pathname, item.href)
                 const Icon = item.icon
@@ -102,6 +103,18 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
                 )
               })}
             </nav>
+            {devRoleSwitcherEnabled ? (
+              <div className="mt-auto border-t border-border p-4">
+                <AppLink
+                  href="/"
+                  direction="back"
+                  onClick={() => setMenuOpen(false)}
+                  className="pressable flex min-h-11 items-center justify-center rounded-xl border border-border px-3 text-sm text-muted-foreground"
+                >
+                  {he.role.switch}
+                </AppLink>
+              </div>
+            ) : null}
           </SheetContent>
         </Sheet>
       ) : null}

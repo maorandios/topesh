@@ -2,7 +2,7 @@ import type { DiaryStatus, User } from "@/domain/types"
 import { findCompany, findComponent, findCustomer, findDomain, findSite, findUser } from "@/data/lookups"
 import { applyDiaryDraft, type DiaryDraft, type LeaderDiaryItemView } from "@/data/repository"
 import type { MockDb } from "@/data/seed"
-import { jerusalemDay } from "@/lib/format"
+import { addCalendarDays, jerusalemDay, jerusalemToday } from "@/lib/format"
 
 export type DiaryAssignmentInput = {
   teamLeaderId: string
@@ -26,6 +26,7 @@ export type ManagerDiarySummary = DiaryAssignmentInput & {
   status: DiaryStatus
   createdAt: string
   submittedAt: string | null
+  cancelledAt: string | null
 }
 
 export type ManagerDiaryDetail = ManagerDiarySummary & {
@@ -173,6 +174,7 @@ export function assignDiary(
           notes: "",
           createdAt,
           submittedAt: null,
+          cancelledAt: null,
         },
         ...db.diaries,
       ],
@@ -227,13 +229,17 @@ export function deleteDiary(db: MockDb, diaryId: string): MockDb | null {
   }
 }
 
-export function markDiaryCancelled(db: MockDb, diaryId: string): MockDb | null {
+export function markDiaryCancelled(
+  db: MockDb,
+  diaryId: string,
+  cancelledAt = new Date().toISOString()
+): MockDb | null {
   const current = db.diaries.find((diary) => diary.id === diaryId)
   if (!current || current.status === "cancelled") return null
   return {
     ...db,
     diaries: db.diaries.map((diary) =>
-      diary.id === diaryId ? { ...diary, status: "cancelled" } : diary
+      diary.id === diaryId ? { ...diary, status: "cancelled", cancelledAt } : diary
     ),
   }
 }
@@ -261,7 +267,7 @@ export function duplicateDiary(
     db,
     {
       teamLeaderId: current.teamLeaderId,
-      workDate: current.workDate,
+      workDate: addCalendarDays(jerusalemToday(), 1),
       companyId: current.companyId,
       customerId: current.customerId,
       siteId: current.siteId,
@@ -556,6 +562,7 @@ function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySu
     status: diary.status,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
+    cancelledAt: diary.cancelledAt,
   }
 }
 

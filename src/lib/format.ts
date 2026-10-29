@@ -82,10 +82,21 @@ function calendarDate(isoDate: string): Date | null {
   return new Date(year, month - 1, day)
 }
 
-function toIsoDate(date: Date): string {
+export function toIsoDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, "0")
   const day = String(date.getDate()).padStart(2, "0")
   return `${date.getFullYear()}-${month}-${day}`
+}
+
+export function parseIsoDate(isoDate: string): Date | null {
+  return calendarDate(isoDate)
+}
+
+export function formatMonthTitle(year: number, monthIndex: number): string {
+  return new Intl.DateTimeFormat("he-IL", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, monthIndex, 1))
 }
 
 export function formatQuantity(value: number): string {

@@ -24,7 +24,7 @@ type LegacyOrgCustomer = { id: string; companyId?: string; name: string; isActiv
 type LegacyOrgSite = { id: string; customerId?: string; name: string; isActive?: boolean }
 
 type LegacyDb = {
-  version: 1 | 2 | 3 | 4
+  version: 1 | 2 | 3 | 4 | 5
   companies?: LegacyOrgCompany[]
   customers?: LegacyOrgCustomer[]
   sites?: LegacyOrgSite[]
@@ -40,7 +40,19 @@ type LegacyDb = {
 }
 
 export function parseDatabase(value: unknown): MockDb | null {
-  if (isV5(value)) return value
+  if (isV7(value)) {
+    return {
+      ...value,
+      diaries: value.diaries.map((diary) => ({
+        ...diary,
+        cancelledAt:
+          diary.cancelledAt ??
+          (diary.status === "cancelled" ? diary.createdAt : null),
+      })),
+    }
+  }
+  // Refresh v5/v6 browser demos to the richer seed diaries.
+  if (isV6(value) || isV5(value)) return createSeed()
   if (isV4(value) || isV3(value) || isV2(value)) return toV5(value)
   if (!isV1(value)) return null
   const seed = createSeed()
@@ -73,7 +85,7 @@ function toV5(value: LegacyDb): MockDb {
   const customerCompany = new Map(customers.map((item) => [item.id, item.companyId]))
   const fallbackCompany = companies[0]?.id ?? catalogCompany.id
   return {
-    version: 5,
+    version: 7,
     companies,
     customers,
     sites,
@@ -154,14 +166,19 @@ function migrateDiary(
     notes: diary.notes,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
+    cancelledAt:
+      diary.status === "cancelled"
+        ? typeof (diary as { cancelledAt?: string | null }).cancelledAt === "string"
+          ? (diary as { cancelledAt: string }).cancelledAt
+          : diary.createdAt
+        : null,
   }
 }
 
-function isV5(value: unknown): value is MockDb {
+function isCurrentSeedShape(value: unknown): value is MockDb {
   if (!value || typeof value !== "object") return false
   const record = value as MockDb
   return (
-    record.version === 5 &&
     record.companies?.every(isActiveNamed) &&
     record.customers?.every(isActiveCustomer) &&
     record.sites?.every(isActiveSite) &&
@@ -174,6 +191,27 @@ function isV5(value: unknown): value is MockDb {
     record.workers?.every(isWorker) &&
     record.items?.every(isItem) &&
     record.checks?.every(isCheck)
+  )
+}
+
+function isV7(value: unknown): value is MockDb {
+  return isCurrentSeedShape(value) && (value as MockDb).version === 7
+}
+
+function isV6(value: unknown): boolean {
+  return isCurrentSeedShape(value) && (value as { version?: number }).version === 6
+}
+
+function isV5(value: unknown): value is LegacyDb {
+  if (!value || typeof value !== "object") return false
+  const record = value as LegacyDb & { version?: number }
+  return Boolean(
+    record.version === 5 &&
+      Array.isArray(record.diaries) &&
+      record.diaries.every(isLegacyDiary) &&
+      record.workers?.every(isWorker) &&
+      record.items?.every(isItem) &&
+      record.checks?.every(isCheck)
   )
 }
 
@@ -321,7 +359,10 @@ function isDiary(value: unknown): boolean {
     (diary.status === "pending" || diary.status === "submitted" || diary.status === "cancelled") &&
     typeof diary.notes === "string" &&
     typeof diary.createdAt === "string" &&
-    (diary.submittedAt === null || typeof diary.submittedAt === "string")
+    (diary.submittedAt === null || typeof diary.submittedAt === "string") &&
+    (diary.cancelledAt === null ||
+      diary.cancelledAt === undefined ||
+      typeof diary.cancelledAt === "string")
   )
 }
 

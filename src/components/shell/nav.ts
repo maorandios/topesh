@@ -6,6 +6,7 @@ import {
   History,
   LayoutDashboard,
   Boxes,
+  Settings,
 } from "lucide-react"
 import { he } from "@/i18n/he"
 
@@ -43,6 +44,12 @@ export const managerSecondaryNav: NavItem[] = [
     label: he.nav.reports,
     shortLabel: he.nav.reports,
     icon: FileSpreadsheet,
+  },
+  {
+    href: "/manager/settings",
+    label: he.nav.settings,
+    shortLabel: he.nav.settings,
+    icon: Settings,
   },
 ]
 

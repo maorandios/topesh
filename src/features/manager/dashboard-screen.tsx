@@ -1,28 +1,56 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
+import {
+  Building2,
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Files,
+  MapPin,
+  Search,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { createManagerDiary, useManagerDb } from "@/data/browser-store"
 import { filterManagerDiaries, getManagerDiary, listManagerDiaries, type ManagerDiarySummary } from "@/data/manager"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { DiaryCreatePanel } from "@/features/manager/diary-create-panel"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
-import { Field, fieldClass, NewDiaryButton } from "@/features/manager/fields"
 import { he } from "@/i18n/he"
-import { addCalendarDays, formatWorkDate, formatWorkDateNumeric, jerusalemDay, jerusalemSpan, jerusalemToday } from "@/lib/format"
+import {
+  addCalendarDays,
+  formatMonthTitle,
+  formatWorkDate,
+  formatWorkDateNumeric,
+  jerusalemDay,
+  jerusalemSpan,
+  jerusalemToday,
+  parseIsoDate,
+  toIsoDate,
+} from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
 import { cn } from "cn"
 
-type StatusFilter = "all" | "pending" | "submitted" | "cancelled"
 type DatePreset = "today" | "week" | "month"
+type QuickFilter = DatePreset | "pending" | "submitted" | "cancelled"
 
 export function DashboardScreen() {
   const query = useManagerDb()
-  const [status, setStatus] = useState<StatusFilter>("all")
-  const [datePreset, setDatePreset] = useState<DatePreset | null>(null)
+  const [quickFilter, setQuickFilter] = useState<QuickFilter | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
@@ -38,12 +66,39 @@ export function DashboardScreen() {
   const db = query.db
   const today = jerusalemToday()
   const all = listManagerDiaries(db)
+  const metrics = he.manager.dashboard.metrics
   const cards = [
-    [he.manager.dashboard.createdToday, all.filter((diary) => jerusalemDay(diary.createdAt) === today).length],
-    [he.manager.dashboard.pendingTotal, all.filter((diary) => diary.status === "pending").length],
-    [he.manager.dashboard.submittedTotal, all.filter((diary) => diary.status === "submitted").length],
-    [he.manager.dashboard.createdTotal, all.length],
+    {
+      key: "createdToday",
+      label: metrics.createdToday.label,
+      hint: metrics.createdToday.hint,
+      value: all.filter((diary) => jerusalemDay(diary.createdAt) === today).length,
+    },
+    {
+      key: "pending",
+      label: metrics.pending.label,
+      hint: metrics.pending.hint,
+      value: all.filter((diary) => diary.status === "pending").length,
+    },
+    {
+      key: "submitted",
+      label: metrics.submitted.label,
+      hint: metrics.submitted.hint,
+      value: all.filter((diary) => diary.status === "submitted").length,
+    },
+    {
+      key: "total",
+      label: metrics.total.label,
+      hint: metrics.total.hint,
+      value: all.length,
+    },
   ] as const
+  const datePreset =
+    quickFilter === "today" || quickFilter === "week" || quickFilter === "month" ? quickFilter : null
+  const status =
+    quickFilter === "pending" || quickFilter === "submitted" || quickFilter === "cancelled"
+      ? quickFilter
+      : "all"
   const range = datePreset ? jerusalemSpan(datePreset) : { from: workDate, to: workDate }
   const diaries = filterManagerDiaries(db, {
     query: search,
@@ -55,29 +110,23 @@ export function DashboardScreen() {
     customerId,
     siteId,
   })
-  const filterKey = [search, status, datePreset ?? "", workDate, companyId, customerId, siteId, teamLeaderId].join("|")
+  const filterKey = [search, quickFilter ?? "", workDate, companyId, customerId, siteId, teamLeaderId].join("|")
   const extra = loaded.key === filterKey ? loaded.extra : 0
   const visibleDiaries = diaries.slice(0, 30 + extra)
   const openDiary = openId ? getManagerDiary(db, openId) : null
   const customers = db.customers
   const sites = db.sites
   const leaders = db.users.filter((user) => user.role === "teamLeader")
-  const dateFilters: Array<[DatePreset, string]> = [
+  const quickFilterOptions: Array<[QuickFilter, string]> = [
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
     ["month", he.manager.dashboard.quick.month],
-  ]
-  const statusFilters: Array<["pending" | "submitted" | "cancelled", string]> = [
     ["pending", he.manager.dashboard.quick.pending],
     ["submitted", he.manager.dashboard.quick.submitted],
     ["cancelled", he.manager.dashboard.quick.cancelled],
   ]
-  const hasFilters = Boolean(
-    status !== "all" || datePreset || search || workDate || companyId || customerId || siteId || teamLeaderId
-  )
   const resetFilters = () => {
-    setStatus("all")
-    setDatePreset(null)
+    setQuickFilter(null)
     setSearch("")
     setWorkDate("")
     setCompanyId("")
@@ -86,133 +135,150 @@ export function DashboardScreen() {
     setTeamLeaderId("")
     setLoaded({ key: "", extra: 0 })
   }
+  const quickFilters = (
+    <div
+      role="radiogroup"
+      aria-label={he.manager.dashboard.filterTitle}
+      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-white"
+    >
+      {quickFilterOptions.map(([value, label]) => (
+        <FilterSegment
+          key={value}
+          pressed={quickFilter === value}
+          label={label}
+          onClick={() => {
+            setQuickFilter(value)
+            setWorkDate("")
+          }}
+        />
+      ))}
+      <FilterSegment
+        pressed={false}
+        label={he.manager.dashboard.reset}
+        onClick={resetFilters}
+      />
+    </div>
+  )
 
   return (
     <PageFrame>
       <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold tracking-tight">{he.manager.dashboard.title}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <NewDiaryButton
-              onClick={() => {
-                setOpenId(null)
-                setCreateOpen(true)
-              }}
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {dateFilters.map(([value, label]) => (
-                <FilterChip
-                  key={value}
-                  pressed={datePreset === value}
-                  label={label}
-                  onClick={() => {
-                    setDatePreset((current) => (current === value ? null : value))
-                    setWorkDate("")
-                  }}
-                />
-              ))}
-              {statusFilters.map(([value, label]) => (
-                <FilterChip
-                  key={value}
-                  pressed={status === value}
-                  label={label}
-                  onClick={() => setStatus((current) => (current === value ? "all" : value))}
-                />
-              ))}
-              <FilterChip pressed={hasFilters} label={he.manager.dashboard.reset} onClick={resetFilters} />
-            </div>
-          </div>
-        </div>
-        <dl className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-          {cards.map(([label, value]) => (
-            <div key={label} className="flex min-h-16 flex-col justify-center gap-0.5 rounded-xl border border-border bg-card px-3 py-2">
-              <dd className="text-xl font-semibold tabular-nums leading-none">{value}</dd>
-              <dt className="text-sm leading-5 text-muted-foreground">{label}</dt>
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+          {cards.map((card) => (
+            <div
+              key={card.key}
+              className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3.5"
+            >
+              <p className="text-sm text-muted-foreground">{card.label}</p>
+              <p className="text-start text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+                {card.value}
+              </p>
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                <span>{card.hint}</span>
+              </p>
             </div>
           ))}
-        </dl>
-        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          <Field label={he.manager.dashboard.searchFree}>
-            <Input
-              value={search}
-              placeholder={he.manager.dashboard.searchFree}
-              className="h-11 text-base md:text-base"
-              onChange={(event) => setSearch(event.target.value)}
-            />
-          </Field>
-          <Field label={he.leader.form.date}>
-            <Input
-              type="date"
-              dir="ltr"
-              value={workDate}
-              className="h-11 text-base md:text-base"
-              onChange={(event) => {
-                setWorkDate(event.target.value)
-                setDatePreset(null)
-              }}
-            />
-          </Field>
-          <Field label={he.manager.dashboard.columns.company}>
-            <select
-              className={fieldClass}
-              value={companyId}
-              onChange={(event) => {
-                setCompanyId(event.target.value)
-                setCustomerId("")
-                setSiteId("")
-              }}
-            >
-              <option value="">{he.manager.all}</option>
-              {db.companies.map((company) => (
-                <option key={company.id} value={company.id}>{company.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label={he.manager.dashboard.columns.customer}>
-            <select
-              className={fieldClass}
-              value={customerId}
-              onChange={(event) => {
-                setCustomerId(event.target.value)
-                setSiteId("")
-              }}
-            >
-              <option value="">{he.manager.all}</option>
-              {customers.map((customer) => (
-                <option key={customer.id} value={customer.id}>{customer.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label={he.manager.dashboard.columns.site}>
-            <select className={fieldClass} value={siteId} onChange={(event) => setSiteId(event.target.value)}>
-              <option value="">{he.manager.all}</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>{site.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label={he.manager.dashboard.columns.leader}>
-            <select className={fieldClass} value={teamLeaderId} onChange={(event) => setTeamLeaderId(event.target.value)}>
-              <option value="">{he.manager.all}</option>
-              {leaders.map((leader) => (
-                <option key={leader.id} value={leader.id}>{leader.fullName}</option>
-              ))}
-            </select>
-          </Field>
+          <button
+            type="button"
+            className="pressable flex flex-col gap-3 rounded-md border border-foreground bg-foreground px-4 py-3.5 text-start text-background"
+            onClick={() => {
+              setOpenId(null)
+              setCreateOpen(true)
+            }}
+          >
+            <span className="text-sm text-background/70">{metrics.newDiary.label}</span>
+            <span className="text-3xl font-semibold tracking-tight">{metrics.newDiary.title}</span>
+            <span className="flex items-center gap-2 text-xs text-background/70">
+              <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+              <span>{metrics.newDiary.hint}</span>
+            </span>
+          </button>
+        </div>
+        <section className="overflow-x-auto rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5">
+          <div className="grid min-w-[56rem] grid-cols-6 gap-3">
+            <FilterField label={he.manager.dashboard.searchFree} icon={Search}>
+              <Input
+                value={search}
+                placeholder={he.manager.dashboard.searchFree}
+                className={filterControlClass}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </FilterField>
+            <FilterField label={he.manager.dashboard.date} icon={CalendarDays}>
+              <FilterDate
+                value={workDate}
+                placeholder={he.manager.dashboard.pickDate}
+                onValueChange={(value) => {
+                  setWorkDate(value)
+                  setQuickFilter(null)
+                }}
+              />
+            </FilterField>
+            <FilterField label={he.manager.dashboard.columns.company} icon={Building2}>
+              <FilterSelect
+                value={companyId}
+                options={[
+                  { value: "", label: he.manager.all },
+                  ...db.companies.map((company) => ({ value: company.id, label: company.name })),
+                ]}
+                onValueChange={(value) => {
+                  setCompanyId(value)
+                  setCustomerId("")
+                  setSiteId("")
+                }}
+              />
+            </FilterField>
+            <FilterField label={he.manager.dashboard.columns.customer} icon={Users}>
+              <FilterSelect
+                value={customerId}
+                options={[
+                  { value: "", label: he.manager.all },
+                  ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
+                ]}
+                onValueChange={(value) => {
+                  setCustomerId(value)
+                  setSiteId("")
+                }}
+              />
+            </FilterField>
+            <FilterField label={he.manager.dashboard.columns.site} icon={MapPin}>
+              <FilterSelect
+                value={siteId}
+                options={[
+                  { value: "", label: he.manager.all },
+                  ...sites.map((site) => ({ value: site.id, label: site.name })),
+                ]}
+                onValueChange={setSiteId}
+              />
+            </FilterField>
+            <FilterField label={he.manager.dashboard.columns.leader} icon={UserRound}>
+              <FilterSelect
+                value={teamLeaderId}
+                options={[
+                  { value: "", label: he.manager.all },
+                  ...leaders.map((leader) => ({ value: leader.id, label: leader.fullName })),
+                ]}
+                onValueChange={setTeamLeaderId}
+              />
+            </FilterField>
+          </div>
         </section>
-        <h2 className="text-sm font-medium">{he.manager.dashboard.recent}</h2>
-        {diaries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{he.manager.dashboard.recentEmpty}</p>
-        ) : (
+        <DiaryTable
+          diaries={visibleDiaries}
+          empty={diaries.length === 0}
+          toolbar={quickFilters}
+          onOpen={(id) => {
+            setCreateOpen(false)
+            setOpenId(id)
+          }}
+        />
+        {diaries.length === 0 ? null : (
           <>
-            <DiaryTable
-              diaries={visibleDiaries}
-              onOpen={(id) => {
-                setCreateOpen(false)
-                setOpenId(id)
-              }}
-            />
-            <ul className="overflow-hidden rounded-xl border border-border bg-card lg:hidden">
+            <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
+              <li className="flex justify-end border-b border-border bg-muted/70 px-3 py-2.5">
+                {quickFilters}
+              </li>
               {visibleDiaries.map((diary) => (
                 <li key={diary.id} className="border-b border-border last:border-b-0">
                   <DiaryRow
@@ -230,7 +296,7 @@ export function DashboardScreen() {
                 type="button"
                 size="touch"
                 variant="outline"
-                className="self-start"
+                className="self-center"
                 onClick={() => setLoaded({ key: filterKey, extra: extra + 50 })}
               >
                 {he.manager.dashboard.loadMore}
@@ -245,7 +311,7 @@ export function DashboardScreen() {
   )
 }
 
-function FilterChip({
+function FilterSegment({
   pressed,
   label,
   onClick,
@@ -257,10 +323,13 @@ function FilterChip({
   return (
     <button
       type="button"
-      aria-pressed={pressed}
+      role="radio"
+      aria-checked={pressed}
       className={cn(
-        "pressable min-h-11 rounded-xl border px-3 text-sm",
-        pressed ? "border-foreground bg-muted font-medium" : "border-border bg-card text-muted-foreground"
+        "pressable h-8 shrink-0 px-3 text-xs whitespace-nowrap transition-colors",
+        pressed
+          ? "bg-[#13776D] font-medium text-white"
+          : "bg-transparent text-foreground hover:bg-muted/70"
       )}
       onClick={onClick}
     >
@@ -272,7 +341,7 @@ function FilterChip({
 function duplicateNextDay(diary: ManagerDiarySummary) {
   const result = createManagerDiary({
     teamLeaderId: diary.teamLeaderId,
-    workDate: addCalendarDays(diary.workDate, 1),
+    workDate: addCalendarDays(jerusalemToday(), 1),
     companyId: diary.companyId,
     customerId: diary.customerId,
     siteId: diary.siteId,
@@ -284,90 +353,308 @@ function duplicateNextDay(diary: ManagerDiarySummary) {
   else toast(he.manager.invalid)
 }
 
+function isUpcomingWorkDate(workDate: string) {
+  return workDate > jerusalemToday()
+}
+
 function DiaryTable({
   diaries,
+  empty,
+  toolbar,
   onOpen,
 }: {
   diaries: ManagerDiarySummary[]
+  empty: boolean
+  toolbar: ReactNode
   onOpen: (id: string) => void
 }) {
   const columns = he.manager.dashboard.columns
-  const headers = [
-    columns.index,
-    columns.date,
-    columns.company,
-    columns.customer,
-    columns.site,
-    columns.subSite,
-    columns.leader,
-    columns.workOrder,
-    columns.status,
-    columns.duplicate,
+  const headers: Array<{ key: string; label: string }> = [
+    { key: "index", label: columns.index },
+    { key: "date", label: columns.date },
+    { key: "company", label: columns.company },
+    { key: "customer", label: columns.customer },
+    { key: "project", label: columns.project },
+    { key: "site", label: columns.site },
+    { key: "subSite", label: columns.subSite },
+    { key: "leader", label: columns.leader },
+    { key: "workOrder", label: columns.workOrder },
+    { key: "status", label: columns.status },
+    { key: "duplicate", label: columns.duplicate },
   ]
 
   return (
-    <div className="hidden overflow-x-auto rounded-xl border border-border bg-card lg:block">
-      <table className="w-full min-w-[76rem] table-fixed border-collapse text-sm">
+    <div className="hidden rounded-md border border-border bg-card lg:block">
+      <table className="w-full min-w-[74rem] table-fixed border-collapse text-[11px] leading-4">
         <colgroup>
-          <col className="w-12" />
-          <col className="w-44" />
+          <col className="w-10" />
+          <col className="w-[7rem]" />
           <col />
           <col />
           <col />
           <col />
           <col />
-          <col className="w-28" />
-          <col className="w-32" />
-          <col className="w-24" />
+          <col />
+          <col className="w-[6.5rem]" />
+          <col className="w-[7.5rem]" />
+          <col className="w-[5.5rem]" />
         </colgroup>
-        <thead>
-          <tr className="border-b border-border text-xs text-muted-foreground">
+        <thead className="sticky top-0 z-30 bg-muted">
+          <tr className="bg-muted text-foreground">
+            <th colSpan={headers.length} className="bg-muted px-3 pt-3 pb-1.5 font-normal">
+              <div className="flex justify-end">{toolbar}</div>
+            </th>
+          </tr>
+          <tr className="border-b border-border bg-muted text-foreground">
             {headers.map((header) => (
-              <th key={header} className="px-3 py-2 text-start font-medium whitespace-nowrap">
-                {header}
+              <th
+                key={header.key}
+                className="bg-muted px-2 pt-1.5 pb-2.5 text-center font-medium whitespace-nowrap first:ps-3 last:pe-3"
+              >
+                {header.label}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {diaries.map((diary, index) => (
-            <tr
-              key={diary.id}
-              tabIndex={0}
-              className={cn(
-                "cursor-pointer border-b border-border last:border-b-0 hover:bg-muted",
-                diary.status === "cancelled" && "text-muted-foreground [&>td:not(:last-child)]:line-through"
-              )}
-              onClick={() => onOpen(diary.id)}
-              onKeyDown={(event) => {
-                if (event.target !== event.currentTarget) return
-                if (event.key !== "Enter" && event.key !== " ") return
-                event.preventDefault()
-                onOpen(diary.id)
-              }}
-            >
-              <td className="px-3 py-2 tabular-nums text-muted-foreground">{index + 1}</td>
-              <td className="px-3 py-2 whitespace-nowrap">
-                <BidiText>{formatWorkDateNumeric(diary.workDate)}</BidiText>
-              </td>
-              <Cell value={diary.companyName} />
-              <Cell value={diary.customerName} />
-              <Cell value={diary.siteName} />
-              <Cell value={diary.subSiteName} />
-              <Cell value={diary.teamLeaderName} />
-              <td className="px-3 py-2 whitespace-nowrap">
-                <BidiText>{diary.workOrderNumber}</BidiText>
-              </td>
-              <td className="px-3 py-2 whitespace-nowrap">
-                {diaryStatusLabel(diary.status)}
-              </td>
-              <td className="px-2 py-1">
-                <DuplicateButton diary={diary} />
+          {empty ? (
+            <tr>
+              <td colSpan={headers.length} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {he.manager.dashboard.recentEmpty}
               </td>
             </tr>
-          ))}
+          ) : (
+            diaries.map((diary, index) => (
+              <tr
+                key={diary.id}
+                tabIndex={0}
+                className={cn(
+                  "cursor-pointer border-b border-border/80 last:border-b-0 hover:bg-muted/40",
+                  diary.status === "cancelled" && "text-muted-foreground [&>td:not(:last-child)]:line-through"
+                )}
+                onClick={() => onOpen(diary.id)}
+                onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return
+                  if (event.key !== "Enter" && event.key !== " ") return
+                  event.preventDefault()
+                  onOpen(diary.id)
+                }}
+              >
+                <Cell className="tabular-nums text-muted-foreground">{index + 1}</Cell>
+                <Cell className="whitespace-nowrap">
+                  <span className="relative inline-block">
+                    <BidiText>{formatWorkDateNumeric(diary.workDate)}</BidiText>
+                    {isUpcomingWorkDate(diary.workDate) ? (
+                      <span
+                        className="absolute top-1/2 end-full me-1.5 size-1.5 -translate-y-1/2 rounded-full bg-emerald-500"
+                        aria-hidden
+                      />
+                    ) : null}
+                  </span>
+                </Cell>
+                <Cell value={diary.companyName} />
+                <Cell value={diary.customerName} />
+                <Cell value={diary.projectName || "—"} />
+                <Cell value={diary.siteName} />
+                <Cell value={diary.subSiteName} />
+                <Cell value={diary.teamLeaderName} />
+                <Cell className="whitespace-nowrap">
+                  <BidiText>{diary.workOrderNumber}</BidiText>
+                </Cell>
+                <Cell className="whitespace-nowrap">{diaryStatusLabel(diary.status)}</Cell>
+                <Cell>
+                  <DuplicateButton diary={diary} />
+                </Cell>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+const filterControlClass =
+  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+
+const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
+const EMPTY_FILTER = "__all__"
+
+function FilterField({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string
+  icon: LucideIcon
+  children: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1 text-start text-[11px] font-semibold text-foreground">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        {label}
+      </span>
+      <div className="w-full">{children}</div>
+    </div>
+  )
+}
+
+function FilterSelect({
+  value,
+  options,
+  onValueChange,
+}: {
+  value: string
+  options: Array<{ value: string; label: string }>
+  onValueChange: (value: string) => void
+}) {
+  const selected = options.find((option) => option.value === value)?.label ?? he.manager.all
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          filterControlClass,
+          "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+        )}
+      >
+        <span className="min-w-0 flex-1 truncate">{selected}</span>
+        <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 rounded-md p-1.5">
+        <DropdownMenuRadioGroup
+          value={value || EMPTY_FILTER}
+          onValueChange={(next) => onValueChange(next === EMPTY_FILTER ? "" : next)}
+        >
+          {options.map((option) => (
+            <DropdownMenuRadioItem
+              key={option.value || EMPTY_FILTER}
+              value={option.value || EMPTY_FILTER}
+              className="rounded-md px-3 py-2"
+            >
+              <span className="truncate">{option.label}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function FilterDate({
+  value,
+  placeholder,
+  onValueChange,
+}: {
+  value: string
+  placeholder: string
+  onValueChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger
+        className={cn(filterControlClass, "relative flex cursor-pointer items-center pe-9 ps-4 text-start")}
+      >
+        <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
+          {value ? formatWorkDate(value) : placeholder}
+        </span>
+        <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" sideOffset={6} className="w-auto rounded-md p-3">
+        <HebrewCalendar
+          value={value}
+          onSelect={(next) => {
+            onValueChange(next)
+            setOpen(false)
+          }}
+        />
+        {value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-8 w-full text-xs"
+            onClick={() => {
+              onValueChange("")
+              setOpen(false)
+            }}
+          >
+            {he.manager.dashboard.clearDate}
+          </Button>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function HebrewCalendar({
+  value,
+  onSelect,
+}: {
+  value: string
+  onSelect: (value: string) => void
+}) {
+  const selected = parseIsoDate(value)
+  const initial = selected ?? parseIsoDate(jerusalemToday()) ?? new Date()
+  const [cursor, setCursor] = useState(() => new Date(initial.getFullYear(), initial.getMonth(), 1))
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const cells = Array.from({ length: firstDay + daysInMonth }, (_, index) => {
+    if (index < firstDay) return null
+    return index - firstDay + 1
+  })
+
+  return (
+    <div className="w-[16.5rem]" dir="rtl">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          onClick={() => setCursor(new Date(year, month + 1, 1))}
+          aria-label="חודש הבא"
+        >
+          <ChevronRight className="size-4" />
+        </button>
+        <p className="text-sm font-semibold">{formatMonthTitle(year, month)}</p>
+        <button
+          type="button"
+          className="inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+          onClick={() => setCursor(new Date(year, month - 1, 1))}
+          aria-label="חודש קודם"
+        >
+          <ChevronLeft className="size-4" />
+        </button>
+      </div>
+      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[11px] text-muted-foreground">
+        {HEBREW_WEEKDAYS.map((day) => (
+          <span key={day}>{day}</span>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((day, index) => {
+          if (!day) return <span key={`empty-${index}`} />
+          const iso = toIsoDate(new Date(year, month, day))
+          const active = value === iso
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={cn(
+                "inline-flex size-8 items-center justify-center rounded-full text-sm tabular-nums hover:bg-muted",
+                active && "bg-primary text-primary-foreground hover:bg-primary"
+              )}
+              onClick={() => onSelect(iso)}
+            >
+              {day}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -376,24 +663,37 @@ function DuplicateButton({ diary }: { diary: ManagerDiarySummary }) {
   return (
     <Button
       type="button"
-      variant="outline"
-      className="h-11 px-3 text-sm"
+      variant="ghost"
+      size="icon-sm"
+      className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground"
+      aria-label={he.manager.dashboard.columns.duplicate}
+      title={he.manager.dashboard.columns.duplicate}
       onClick={(event) => {
         event.stopPropagation()
         duplicateNextDay(diary)
       }}
     >
-      {he.manager.dashboard.columns.duplicate}
+      <Files className="size-3.5" />
     </Button>
   )
 }
 
-function Cell({ value }: { value: string }) {
+function Cell({
+  value,
+  children,
+  className,
+}: {
+  value?: string
+  children?: ReactNode
+  className?: string
+}) {
   return (
-    <td className="px-3 py-2">
-      <span className="block truncate" title={value}>
-        {value}
-      </span>
+    <td className={cn("px-2 py-2 text-center first:ps-3 last:pe-3", className)}>
+      {children ?? (
+        <span className="mx-auto block max-w-full truncate text-center" title={value}>
+          {value}
+        </span>
+      )}
     </td>
   )
 }
@@ -416,7 +716,13 @@ function DiaryRow({
         onClick={() => onOpen(diary.id)}
       >
         <span className="block truncate font-medium">{diary.subSiteName}</span>
-        <span className="block truncate text-xs text-muted-foreground">
+        <span className="relative block truncate text-xs text-muted-foreground">
+          {isUpcomingWorkDate(diary.workDate) ? (
+            <span
+              className="absolute top-1/2 end-full me-1.5 size-1.5 -translate-y-1/2 rounded-full bg-emerald-500"
+              aria-hidden
+            />
+          ) : null}
           {formatWorkDate(diary.workDate)} · {diary.teamLeaderName} · {diary.siteName}
         </span>
       </button>

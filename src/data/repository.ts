@@ -296,6 +296,7 @@ function toDetail(db: MockDb, diary: MockDb["diaries"][number]): LeaderDiaryDeta
     notes: diary.notes,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
+    cancelledAt: diary.cancelledAt ?? null,
     siteName: findSite(db, diary.siteId)?.name ?? "",
     workers: db.workers
       .filter((worker) => worker.diaryId === diary.id)
@@ -336,5 +337,5 @@ function compareSummaries(a: LeaderDiarySummary, b: LeaderDiarySummary) {
 }
 
 function isCurrentVersion(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" && "version" in value && value.version === 5)
+  return Boolean(value && typeof value === "object" && "version" in value && value.version === 7)
 }

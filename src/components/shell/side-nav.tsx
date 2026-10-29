@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation"
 import { AppLink } from "@/components/shell/app-link"
 import { isNavActive, leaderNav, managerNav, type NavItem } from "@/components/shell/nav"
+import { devRoleSwitcherEnabled } from "@/features/dev-role/users"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
 
@@ -39,6 +40,17 @@ export function SideNav({ variant }: { variant: "manager" | "leader" }) {
           )
         })}
       </nav>
+      {devRoleSwitcherEnabled ? (
+        <div className="border-t border-border p-3">
+          <AppLink
+            href="/"
+            direction="back"
+            className="pressable flex min-h-11 items-center justify-center rounded-xl border border-border px-3 text-sm text-muted-foreground hover:bg-muted/60"
+          >
+            {he.role.switch}
+          </AppLink>
+        </div>
+      ) : null}
     </aside>
   )
 }

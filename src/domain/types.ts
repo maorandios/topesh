@@ -75,6 +75,7 @@ export type WorkDiary = {
   notes: string
   createdAt: string
   submittedAt: string | null
+  cancelledAt: string | null
 }
 
 /** Team-leader views omit work-order and org assignment IDs. */
