@@ -285,7 +285,10 @@ export function saveCompany(db: MockDb, id: string | null, name: string): MockDb
   if (!id) {
     return {
       ...db,
-      companies: [...db.companies, { id: crypto.randomUUID(), name: clean, isActive: true }],
+      companies: [
+        ...db.companies,
+        { id: crypto.randomUUID(), name: clean, isActive: true, createdAt: new Date().toISOString() },
+      ],
     }
   }
   if (!db.companies.some((item) => item.id === id)) return null
@@ -301,7 +304,16 @@ export function saveCustomer(db: MockDb, id: string | null, name: string): MockD
   if (!id) {
     return {
       ...db,
-      customers: [...db.customers, { id: crypto.randomUUID(), companyId: "", name: clean, isActive: true }],
+      customers: [
+        ...db.customers,
+        {
+          id: crypto.randomUUID(),
+          companyId: "",
+          name: clean,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+      ],
     }
   }
   if (!db.customers.some((item) => item.id === id)) return null
@@ -317,7 +329,16 @@ export function saveSite(db: MockDb, id: string | null, name: string): MockDb | 
   if (!id) {
     return {
       ...db,
-      sites: [...db.sites, { id: crypto.randomUUID(), customerId: "", name: clean, isActive: true }],
+      sites: [
+        ...db.sites,
+        {
+          id: crypto.randomUUID(),
+          customerId: "",
+          name: clean,
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+      ],
     }
   }
   if (!db.sites.some((item) => item.id === id)) return null

@@ -13,14 +13,15 @@ export const company: Company = {
   id: "company-or-tech",
   name: "אור-טק מערכות בע״מ",
   isActive: true,
+  createdAt: "2025-03-12T08:00:00.000Z",
 }
 
 export const companies: Company[] = [
   company,
-  { id: "company-secure-net", name: "סקיוור-נט בע״מ", isActive: true },
-  { id: "company-fireline", name: "פיירליין התקנות", isActive: true },
-  { id: "company-vision", name: "ויז׳ן מערכות אבטחה", isActive: true },
-  { id: "company-audio-pro", name: "אודיו פרו כריזה", isActive: true },
+  { id: "company-secure-net", name: "סקיוור-נט בע״מ", isActive: true, createdAt: "2025-05-04T08:00:00.000Z" },
+  { id: "company-fireline", name: "פיירליין התקנות", isActive: true, createdAt: "2025-06-18T08:00:00.000Z" },
+  { id: "company-vision", name: "ויז׳ן מערכות אבטחה", isActive: true, createdAt: "2025-08-01T08:00:00.000Z" },
+  { id: "company-audio-pro", name: "אודיו פרו כריזה", isActive: true, createdAt: "2025-09-22T08:00:00.000Z" },
 ]
 
 export const managerUser: User = {
@@ -151,6 +152,7 @@ export const customers: Customer[] = customerNames.map((name, index) => ({
   companyId: "",
   name,
   isActive: true,
+  createdAt: `2025-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 27) + 1).padStart(2, "0")}T09:00:00.000Z`,
 }))
 
 const sitePrefixes = [
@@ -188,8 +190,19 @@ const sitePlaces = [
 ]
 
 export const sites: Site[] = Array.from({ length: 50 }, (_, index) => {
-  if (index === 0) return { id: "site-hadar", customerId: "", name: "קניון הדר", isActive: true }
-  if (index === 1) return { id: "site-sharon", customerId: "", name: "בית חולים השרון", isActive: true }
+  const createdAt = `2025-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 27) + 1).padStart(2, "0")}T11:00:00.000Z`
+  if (index === 0) {
+    return { id: "site-hadar", customerId: "", name: "קניון הדר", isActive: true, createdAt: "2025-02-10T11:00:00.000Z" }
+  }
+  if (index === 1) {
+    return {
+      id: "site-sharon",
+      customerId: "",
+      name: "בית חולים השרון",
+      isActive: true,
+      createdAt: "2025-02-18T11:00:00.000Z",
+    }
+  }
   const prefix = sitePrefixes[index % sitePrefixes.length]
   const place = sitePlaces[index % sitePlaces.length]
   const suffix = index > 20 ? ` ${Math.floor(index / 10)}` : ""
@@ -198,6 +211,7 @@ export const sites: Site[] = Array.from({ length: 50 }, (_, index) => {
     customerId: "",
     name: `${prefix} ${place}${suffix}`.trim(),
     isActive: true,
+    createdAt,
   }
 })
 

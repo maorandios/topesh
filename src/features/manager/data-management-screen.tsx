@@ -1,7 +1,20 @@
 "use client"
 
-import { useState, useSyncExternalStore } from "react"
+import { useState, useSyncExternalStore, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import {
+  Building2,
+  IdCard,
+  Mail,
+  MapPin,
+  PenLine,
+  Phone,
+  Search,
+  Trash,
+  UserRound,
+  Users,
+  type LucideIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
@@ -41,8 +54,8 @@ import {
 import type { DeleteBlockedReason } from "@/data/manager"
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
-import { Field } from "@/features/manager/fields"
 import { he } from "@/i18n/he"
+import { formatWorkDateNumeric } from "@/lib/format"
 import { cn } from "cn"
 
 type TabId = "companies" | "customers" | "sites" | "teamLeaders" | "managers"
@@ -73,6 +86,18 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "managers", label: he.manager.organization.tabs.managers },
 ]
 
+const panelSurfaceClass =
+  "border-border/40 bg-white/92 shadow-lg backdrop-blur-xl dark:border-border/40 dark:bg-background/90"
+
+const panelSurfaceStyle = {
+  backgroundColor: "rgb(255 255 255 / 0.92)",
+  WebkitBackdropFilter: "blur(16px)",
+  backdropFilter: "blur(16px)",
+} as const
+
+const filterControlClass =
+  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+
 export function DataManagementScreen() {
   const query = useManagerDb()
   const params = useSearchParams()
@@ -88,6 +113,14 @@ export function DataManagementScreen() {
   if (query.status === "loading") return <LeaderLoading />
   if (query.status === "error") return <LeaderStoreError />
   const db = query.db
+
+  const counts: Record<TabId, number> = {
+    companies: db.companies.length,
+    customers: db.customers.length,
+    sites: db.sites.length,
+    teamLeaders: db.users.filter((user) => user.role === "teamLeader").length,
+    managers: db.users.filter((user) => user.role === "manager").length,
+  }
 
   const chooseTab = (next: TabId) => {
     setTab(next)
@@ -130,52 +163,80 @@ export function DataManagementScreen() {
   return (
     <PageFrame>
       <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold tracking-tight">{he.manager.organization.title}</h1>
-          <Button type="button" size="touch" onClick={openCreate}>
-            {he.manager.organization.add}
-          </Button>
-        </div>
-        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
           {tabs.map((item) => (
             <button
               key={item.id}
               type="button"
               className={cn(
-                "pressable min-h-11 shrink-0 rounded-xl border px-3 text-sm",
+                "pressable flex flex-col gap-3 rounded-md border px-4 py-3.5 text-start transition-colors",
                 tab === item.id
-                  ? "border-foreground bg-muted font-medium"
-                  : "border-border bg-card text-muted-foreground"
+                  ? "border-foreground bg-card"
+                  : "border-border bg-card hover:bg-muted/40"
               )}
               onClick={() => chooseTab(item.id)}
             >
-              {item.label}
+              <p className="text-sm text-muted-foreground">{item.label}</p>
+              <p className="text-start text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+                {counts[item.id]}
+              </p>
+              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span
+                  className={cn(
+                    "size-1.5 shrink-0 rounded-full",
+                    tab === item.id ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  )}
+                  aria-hidden
+                />
+                <span>{item.label}</span>
+              </p>
             </button>
           ))}
+          <button
+            type="button"
+            className="pressable flex flex-col gap-3 rounded-md border border-foreground bg-foreground px-4 py-3.5 text-start text-background"
+            onClick={openCreate}
+          >
+            <span className="text-sm text-background/70">{he.manager.organization.addCard.label}</span>
+            <span className="text-3xl font-semibold tracking-tight">{he.manager.organization.addCard.title}</span>
+            <span className="flex items-center gap-2 text-xs text-background/70">
+              <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+              <span>{he.manager.organization.addCard.hint}</span>
+            </span>
+          </button>
         </div>
-        <Input
-          value={search}
-          placeholder={he.manager.organization.search}
-          className="h-11 max-w-md text-base md:text-base"
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        {blockReason ? (
-          <p className="text-sm text-muted-foreground">{he.manager.organization.deleteBlocked[blockReason]}</p>
-        ) : null}
-        <EntityList
-          db={db}
-          tab={tab}
-          search={search}
-          onEdit={(next) => {
-            setError(false)
-            setBlockReason(null)
-            setEditor(next)
-          }}
-          onDelete={(kind, id) => {
-            setBlockReason(null)
-            setDeleteId({ kind, id })
-          }}
-        />
+
+        <div className="flex w-full max-w-4xl flex-col gap-3">
+          <section className="rounded-md border border-border bg-muted/40 px-4 py-3">
+            <FilterField label={he.manager.organization.search} icon={Search}>
+              <Input
+                value={search}
+                placeholder={he.manager.organization.search}
+                className={filterControlClass}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </FilterField>
+          </section>
+
+          {blockReason ? (
+            <p className="text-sm text-muted-foreground">{he.manager.organization.deleteBlocked[blockReason]}</p>
+          ) : null}
+
+          <EntityList
+            db={db}
+            tab={tab}
+            search={search}
+            onEdit={(next) => {
+              setError(false)
+              setBlockReason(null)
+              setEditor(next)
+            }}
+            onDelete={(kind, id) => {
+              setBlockReason(null)
+              setDeleteId({ kind, id })
+            }}
+          />
+        </div>
       </div>
       <EditorPanel
         editor={editor}
@@ -187,23 +248,57 @@ export function DataManagementScreen() {
         onSave={save}
       />
       <Dialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
-        <DialogContent>
+        <DialogContent className="rounded-md sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{he.manager.organization.delete}</DialogTitle>
             <DialogDescription>{he.manager.organization.deleteConfirm}</DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button type="button" size="touch" onClick={runDelete}>
-              {he.manager.organization.deleteAction}
+          <DialogFooter className="flex-row gap-2 sm:justify-stretch">
+            <Button
+              type="button"
+              size="default"
+              variant="outline"
+              className="h-10 w-[30%]"
+              onClick={() => setDeleteId(null)}
+            >
+              {he.manager.panel.abortAction}
             </Button>
-            <Button type="button" size="touch" variant="outline" onClick={() => setDeleteId(null)}>
-              {he.manager.organization.keep}
+            <Button type="button" size="default" className="h-10 w-[70%]" onClick={runDelete}>
+              {he.manager.organization.deleteAction}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </PageFrame>
   )
+}
+
+function FilterField({
+  label,
+  icon: Icon,
+  children,
+}: {
+  label: string
+  icon: LucideIcon
+  children: ReactNode
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1 text-start text-[11px] font-semibold text-foreground">
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        {label}
+      </span>
+      <div className="w-full">{children}</div>
+    </div>
+  )
+}
+
+function countDiaries(db: MockDb, tab: TabId, id: string) {
+  if (tab === "companies") return db.diaries.filter((diary) => diary.companyId === id).length
+  if (tab === "customers") return db.diaries.filter((diary) => diary.customerId === id).length
+  if (tab === "sites") return db.diaries.filter((diary) => diary.siteId === id).length
+  if (tab === "teamLeaders") return db.diaries.filter((diary) => diary.teamLeaderId === id).length
+  return 0
 }
 
 function EntityList({
@@ -220,50 +315,44 @@ function EntityList({
   onDelete: (kind: TabId, id: string) => void
 }) {
   const query = search.trim()
-  if (tab === "companies") {
-    const rows = db.companies.filter((item) => !query || item.name.includes(query))
-    return (
-      <Table
-        empty={rows.length === 0}
-        headers={[he.manager.organization.name, ""]}
-        rows={rows.map((item) => ({
-          id: item.id,
-          cells: [item.name],
-          onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
-          onDelete: () => onDelete("companies", item.id),
-        }))}
-      />
-    )
-  }
-  if (tab === "customers") {
-    const rows = db.customers.filter((item) => !query || item.name.includes(query))
-    return (
-      <Table
-        empty={rows.length === 0}
-        headers={[he.manager.organization.name, ""]}
-        rows={rows.map((item) => ({
-          id: item.id,
-          cells: [item.name],
-          onEdit: () => onEdit({ kind: "customer", id: item.id, name: item.name }),
-          onDelete: () => onDelete("customers", item.id),
-        }))}
-      />
-    )
-  }
-  if (tab === "sites") {
-    const rows = db.sites.filter((item) => !query || item.name.includes(query))
-    return (
-      <Table
-        empty={rows.length === 0}
-        headers={[he.manager.organization.name, ""]}
-        rows={rows.map((item) => ({
-          id: item.id,
-          cells: [item.name],
-          onEdit: () => onEdit({ kind: "site", id: item.id, name: item.name }),
-          onDelete: () => onDelete("sites", item.id),
-        }))}
-      />
-    )
+  if (tab === "companies" || tab === "customers" || tab === "sites") {
+    const orgRows =
+      tab === "companies"
+        ? db.companies
+            .filter((item) => !query || item.name.includes(query))
+            .map((item, index) => ({
+              id: item.id,
+              index: index + 1,
+              name: item.name,
+              foundedAt: item.createdAt,
+              diaries: countDiaries(db, "companies", item.id),
+              onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
+              onDelete: () => onDelete("companies", item.id),
+            }))
+        : tab === "customers"
+          ? db.customers
+              .filter((item) => !query || item.name.includes(query))
+              .map((item, index) => ({
+                id: item.id,
+                index: index + 1,
+                name: item.name,
+                foundedAt: item.createdAt,
+                diaries: countDiaries(db, "customers", item.id),
+                onEdit: () => onEdit({ kind: "customer", id: item.id, name: item.name }),
+                onDelete: () => onDelete("customers", item.id),
+              }))
+          : db.sites
+              .filter((item) => !query || item.name.includes(query))
+              .map((item, index) => ({
+                id: item.id,
+                index: index + 1,
+                name: item.name,
+                foundedAt: item.createdAt,
+                diaries: countDiaries(db, "sites", item.id),
+                onEdit: () => onEdit({ kind: "site", id: item.id, name: item.name }),
+                onDelete: () => onDelete("sites", item.id),
+              }))
+    return <OrgEntityTable rows={orgRows} />
   }
   if (tab === "teamLeaders") {
     const rows = db.users.filter((user) => {
@@ -276,17 +365,19 @@ function EntityList({
       )
     })
     return (
-      <Table
+      <EntityTable
         empty={rows.length === 0}
         headers={[
+          he.manager.organization.index,
           he.manager.teamLeaders.name,
           he.manager.teamLeaders.identity,
           he.manager.teamLeaders.phone,
-          "",
+          he.manager.edit,
+          he.manager.organization.delete,
         ]}
-        rows={rows.map((item) => ({
+        rows={rows.map((item, index) => ({
           id: item.id,
-          cells: [item.fullName, item.identityNumber, item.phone ?? ""],
+          cells: [String(index + 1), item.fullName, item.identityNumber, item.phone ?? ""],
           onEdit: () =>
             onEdit({
               kind: "teamLeader",
@@ -306,12 +397,18 @@ function EntityList({
     return user.fullName.includes(query) || (user.email ?? "").includes(query)
   })
   return (
-    <Table
+    <EntityTable
       empty={rows.length === 0}
-      headers={[he.manager.managers.name, he.manager.managers.email, ""]}
-      rows={rows.map((item) => ({
+      headers={[
+        he.manager.organization.index,
+        he.manager.managers.name,
+        he.manager.managers.email,
+        he.manager.edit,
+        he.manager.organization.delete,
+      ]}
+      rows={rows.map((item, index) => ({
         id: item.id,
-        cells: [item.fullName, item.email ?? ""],
+        cells: [String(index + 1), item.fullName, item.email ?? ""],
         onEdit: () =>
           onEdit({
             kind: "manager",
@@ -325,7 +422,145 @@ function EntityList({
   )
 }
 
-function Table({
+function OrgEntityTable({
+  rows,
+}: {
+  rows: Array<{
+    id: string
+    index: number
+    name: string
+    foundedAt: string
+    diaries: number
+    onEdit: () => void
+    onDelete: () => void
+  }>
+}) {
+  const headers = [
+    he.manager.organization.index,
+    he.manager.organization.name,
+    he.manager.organization.foundedAt,
+    he.manager.organization.diariesCount,
+    he.manager.edit,
+    he.manager.organization.delete,
+  ]
+  const empty = rows.length === 0
+  return (
+    <>
+      <div className="hidden rounded-md border border-border bg-card lg:block">
+        <table className="w-full border-collapse text-[11px] leading-4">
+          <colgroup>
+            <col className="w-12" />
+            <col />
+            <col className="w-28" />
+            <col className="w-28" />
+            <col className="w-16" />
+            <col className="w-16" />
+          </colgroup>
+          <thead className="sticky top-0 z-20 bg-muted">
+            <tr className="border-b border-border bg-muted text-foreground">
+              {headers.map((header, index) => (
+                <th
+                  key={header}
+                  className={cn(
+                    "bg-muted px-3 py-2.5 font-medium whitespace-nowrap",
+                    index === 1 ? "text-start" : "text-center"
+                  )}
+                >
+                  {header}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {empty ? (
+              <tr>
+                <td colSpan={headers.length} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  {he.manager.empty}
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="border-b border-border/80 last:border-b-0 hover:bg-muted/40">
+                  <td className="px-3 py-2.5 text-center tabular-nums text-muted-foreground">{row.index}</td>
+                  <td className="truncate px-3 py-2.5 text-start font-medium">{row.name}</td>
+                  <td className="px-3 py-2.5 text-center tabular-nums whitespace-nowrap">
+                    {formatWorkDateNumeric(row.foundedAt.slice(0, 10))}
+                  </td>
+                  <td className="px-3 py-2.5 text-center tabular-nums">{row.diaries}</td>
+                  <td className="px-2 py-2 text-center">
+                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                      <PenLine className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
+                      <Trash className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
+        {empty ? (
+          <li className="px-3 py-6 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
+        ) : (
+          rows.map((row) => (
+            <li key={row.id} className="border-b border-border px-3 py-3 text-sm last:border-b-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">
+                    <span className="me-2 text-muted-foreground tabular-nums">{row.index}.</span>
+                    {row.name}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {formatWorkDateNumeric(row.foundedAt.slice(0, 10))} · {row.diaries}{" "}
+                    {he.manager.organization.diariesCount}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                    <PenLine className="size-3.5" aria-hidden />
+                  </RowIconButton>
+                  <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
+                    <Trash className="size-3.5" aria-hidden />
+                  </RowIconButton>
+                </div>
+              </div>
+            </li>
+          ))
+        )}
+      </ul>
+    </>
+  )
+}
+
+function RowIconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  children: ReactNode
+}) {
+  return (
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="ghost"
+      className="text-muted-foreground hover:text-foreground"
+      aria-label={label}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
+  )
+}
+
+function EntityTable({
   empty,
   headers,
   rows,
@@ -339,65 +574,101 @@ function Table({
     onDelete: () => void
   }>
 }) {
-  if (empty) return <p className="text-sm text-muted-foreground">{he.manager.empty}</p>
   return (
     <>
-      <div className="hidden overflow-x-auto rounded-xl border border-border bg-card lg:block">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border text-xs text-muted-foreground">
+      <div className="hidden rounded-md border border-border bg-card lg:block">
+        <table className="w-full border-collapse text-[11px] leading-4">
+          <thead className="sticky top-0 z-20 bg-muted">
+            <tr className="border-b border-border bg-muted text-foreground">
               {headers.map((header, index) => (
-                <th key={`${header}-${index}`} className="px-3 py-2 text-start font-medium">
+                <th
+                  key={`${header}-${index}`}
+                  className={cn(
+                    "bg-muted px-3 py-2.5 font-medium whitespace-nowrap",
+                    index === 1 ? "text-start" : "text-center"
+                  )}
+                >
                   {header}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-b border-border last:border-b-0">
-                {row.cells.map((cell, index) => (
-                  <td key={`${row.id}-${index}`} className="px-3 py-2">
-                    {cell}
-                  </td>
-                ))}
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" size="touch" variant="outline" onClick={row.onEdit}>
-                      {he.manager.edit}
-                    </Button>
-                    <Button type="button" size="touch" variant="outline" onClick={row.onDelete}>
-                      {he.manager.organization.delete}
-                    </Button>
-                  </div>
+            {empty ? (
+              <tr>
+                <td colSpan={headers.length} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                  {he.manager.empty}
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="border-b border-border/80 last:border-b-0 hover:bg-muted/40">
+                  {row.cells.map((cell, index) => (
+                    <td
+                      key={`${row.id}-${index}`}
+                      className={cn(
+                        "truncate px-3 py-2.5",
+                        index === 1 ? "text-start font-medium" : "text-center tabular-nums"
+                      )}
+                    >
+                      {cell || "—"}
+                    </td>
+                  ))}
+                  <td className="px-2 py-2 text-center">
+                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                      <PenLine className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </td>
+                  <td className="px-2 py-2 text-center">
+                    <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
+                      <Trash className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
-      <ul className="flex flex-col gap-2 lg:hidden">
-        {rows.map((row) => (
-          <li key={row.id} className="rounded-xl border border-border bg-card p-3 text-sm">
-            <p className="font-medium">{row.cells[0]}</p>
-            {row.cells.slice(1).map((cell, index) => (
-              <p key={`${row.id}-m-${index}`} className="text-muted-foreground">
-                {cell}
-              </p>
-            ))}
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" size="touch" variant="outline" onClick={row.onEdit}>
-                {he.manager.edit}
-              </Button>
-              <Button type="button" size="touch" variant="outline" onClick={row.onDelete}>
-                {he.manager.organization.delete}
-              </Button>
-            </div>
-          </li>
-        ))}
+
+      <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
+        {empty ? (
+          <li className="px-3 py-6 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
+        ) : (
+          rows.map((row) => (
+            <li key={row.id} className="border-b border-border px-3 py-3 text-sm last:border-b-0">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium">{row.cells[1] ?? row.cells[0]}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {row.cells
+                      .filter((_, index) => index !== 1)
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                    <PenLine className="size-3.5" aria-hidden />
+                  </RowIconButton>
+                  <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
+                    <Trash className="size-3.5" aria-hidden />
+                  </RowIconButton>
+                </div>
+              </div>
+            </li>
+          ))
+        )}
       </ul>
     </>
   )
+}
+
+function editorIcon(kind: Editor["kind"]): LucideIcon {
+  if (kind === "company") return Building2
+  if (kind === "customer") return Users
+  if (kind === "site") return MapPin
+  return UserRound
 }
 
 function EditorPanel({
@@ -417,13 +688,23 @@ function EditorPanel({
   const open = editor !== null
   const title = editorTitle(editor)
   const body = editor ? (
-    <EditorForm editor={editor} error={error} onChange={onChange} onSave={onSave} />
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 px-4 py-3">
+        <EditorHeader title={title} kind={editor.kind} />
+      </div>
+      <EditorForm editor={editor} error={error} onChange={onChange} onSave={onSave} />
+    </div>
   ) : null
   if (desktop) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="left" className="w-full data-[side=left]:max-w-lg">
-          <SheetHeader className="pe-12">
+        <SheetContent
+          side="left"
+          showCloseButton={false}
+          className={cn("w-full gap-0 overflow-hidden data-[side=left]:!max-w-[28.8rem]", panelSurfaceClass)}
+          style={panelSurfaceStyle}
+        >
+          <SheetHeader className="sr-only">
             <SheetTitle>{title}</SheetTitle>
           </SheetHeader>
           {body}
@@ -433,8 +714,8 @@ function EditorPanel({
   }
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle swipeDirection="down">
-      <DrawerContent className="overflow-hidden">
-        <DrawerHeader className="text-start">
+      <DrawerContent className={cn("overflow-hidden", panelSurfaceClass)} style={panelSurfaceStyle}>
+        <DrawerHeader className="sr-only">
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
         {body}
@@ -442,6 +723,41 @@ function EditorPanel({
     </Drawer>
   )
 }
+
+function EditorHeader({ title, kind }: { title: string; kind: Editor["kind"] }) {
+  const Icon = editorIcon(kind)
+  return (
+    <div className="grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2">
+      <Icon className="size-4 justify-self-center text-muted-foreground" aria-hidden />
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+    </div>
+  )
+}
+
+function EditorField({
+  icon: Icon,
+  label,
+  hint,
+  children,
+}: {
+  icon: LucideIcon
+  label: string
+  hint?: string
+  children: ReactNode
+}) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground">
+        <Icon className="size-3.5 shrink-0" aria-hidden />
+        {label}
+      </span>
+      {children}
+      {hint ? <span className="text-xs leading-5 text-muted-foreground">{hint}</span> : null}
+    </label>
+  )
+}
+
+const editorInputClass = cn(filterControlClass, "text-right")
 
 function EditorForm({
   editor,
@@ -456,70 +772,78 @@ function EditorForm({
 }) {
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
-        <div className="flex flex-col gap-3 text-sm">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        <div className="flex flex-col gap-4 text-sm">
           {editor.kind === "company" || editor.kind === "customer" || editor.kind === "site" ? (
-            <Field label={he.manager.organization.name}>
+            <EditorField
+              icon={editor.kind === "company" ? Building2 : editor.kind === "customer" ? Users : MapPin}
+              label={he.manager.organization.name}
+            >
               <Input
                 value={editor.name}
-                className="h-11 text-base md:text-base"
+                className={editorInputClass}
                 onChange={(event) => onChange({ ...editor, name: event.target.value })}
               />
-            </Field>
+            </EditorField>
           ) : null}
           {editor.kind === "teamLeader" ? (
             <>
-              <Field label={he.manager.teamLeaders.name}>
+              <EditorField icon={UserRound} label={he.manager.teamLeaders.name}>
                 <Input
                   value={editor.fullName}
-                  className="h-11 text-base md:text-base"
+                  className={editorInputClass}
                   onChange={(event) => onChange({ ...editor, fullName: event.target.value })}
                 />
-              </Field>
-              <Field label={he.manager.teamLeaders.identity}>
+              </EditorField>
+              <EditorField
+                icon={IdCard}
+                label={he.manager.teamLeaders.identity}
+                hint={he.manager.teamLeaders.identityInvalid}
+              >
                 <Input
                   dir="ltr"
+                  inputMode="numeric"
                   value={editor.identityNumber}
-                  className="h-11 text-base md:text-base"
+                  className={editorInputClass}
                   onChange={(event) => onChange({ ...editor, identityNumber: event.target.value })}
                 />
-                <span className="text-muted-foreground">{he.manager.teamLeaders.identityInvalid}</span>
-              </Field>
-              <Field label={he.manager.teamLeaders.phone}>
+              </EditorField>
+              <EditorField icon={Phone} label={he.manager.teamLeaders.phone}>
                 <Input
                   dir="ltr"
+                  inputMode="tel"
                   value={editor.phone}
-                  className="h-11 text-base md:text-base"
+                  className={editorInputClass}
                   onChange={(event) => onChange({ ...editor, phone: event.target.value })}
                 />
-              </Field>
+              </EditorField>
             </>
           ) : null}
           {editor.kind === "manager" ? (
             <>
-              <Field label={he.manager.managers.name}>
+              <EditorField icon={UserRound} label={he.manager.managers.name}>
                 <Input
                   value={editor.fullName}
-                  className="h-11 text-base md:text-base"
+                  className={editorInputClass}
                   onChange={(event) => onChange({ ...editor, fullName: event.target.value })}
                 />
-              </Field>
-              <Field label={he.manager.managers.email}>
+              </EditorField>
+              <EditorField icon={Mail} label={he.manager.managers.email} hint={he.manager.managers.emailInvalid}>
                 <Input
                   dir="ltr"
+                  inputMode="email"
                   value={editor.email}
-                  className="h-11 text-base md:text-base"
+                  className={editorInputClass}
                   onChange={(event) => onChange({ ...editor, email: event.target.value })}
                 />
-                <span className="text-muted-foreground">{he.manager.managers.emailInvalid}</span>
-              </Field>
+              </EditorField>
             </>
           ) : null}
-          {error ? <p className="text-muted-foreground">{he.manager.invalid}</p> : null}
+          {error ? <p className="text-xs text-muted-foreground">{he.manager.invalid}</p> : null}
         </div>
       </div>
-      <div className="border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <Button type="button" size="touch" onClick={onSave}>
+      <div className="border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <Button type="button" size="default" className="h-9 w-full" onClick={onSave}>
           {he.manager.save}
         </Button>
       </div>

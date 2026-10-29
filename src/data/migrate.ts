@@ -43,6 +43,9 @@ export function parseDatabase(value: unknown): MockDb | null {
   if (isV7(value)) {
     return {
       ...value,
+      companies: value.companies.map((item, index) => withCreatedAt(item, index)),
+      customers: value.customers.map((item, index) => withCreatedAt(item, index)),
+      sites: value.sites.map((item, index) => withCreatedAt(item, index)),
       diaries: value.diaries.map((diary) => ({
         ...diary,
         cancelledAt:
@@ -103,30 +106,57 @@ function toV5(value: LegacyDb): MockDb {
   }
 }
 
+function withCreatedAt<T extends { id: string; name: string; isActive: boolean }>(
+  item: T & { createdAt?: string | null },
+  index: number
+): T & { createdAt: string } {
+  if (typeof item.createdAt === "string" && item.createdAt) {
+    return { ...item, createdAt: item.createdAt }
+  }
+  const month = String((index % 12) + 1).padStart(2, "0")
+  const day = String((index % 27) + 1).padStart(2, "0")
+  return { ...item, createdAt: `2025-${month}-${day}T10:00:00.000Z` }
+}
+
 function withActiveCompanies(items: LegacyOrgCompany[]): Company[] {
-  return items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    isActive: typeof item.isActive === "boolean" ? item.isActive : true,
-  }))
+  return items.map((item, index) =>
+    withCreatedAt(
+      {
+        id: item.id,
+        name: item.name,
+        isActive: typeof item.isActive === "boolean" ? item.isActive : true,
+      },
+      index
+    )
+  )
 }
 
 function withActiveCustomers(items: LegacyOrgCustomer[]): Customer[] {
-  return items.map((item) => ({
-    id: item.id,
-    companyId: typeof item.companyId === "string" ? item.companyId : "",
-    name: item.name,
-    isActive: typeof item.isActive === "boolean" ? item.isActive : true,
-  }))
+  return items.map((item, index) =>
+    withCreatedAt(
+      {
+        id: item.id,
+        companyId: typeof item.companyId === "string" ? item.companyId : "",
+        name: item.name,
+        isActive: typeof item.isActive === "boolean" ? item.isActive : true,
+      },
+      index
+    )
+  )
 }
 
 function withActiveSites(items: LegacyOrgSite[]): Site[] {
-  return items.map((item) => ({
-    id: item.id,
-    customerId: typeof item.customerId === "string" ? item.customerId : "",
-    name: item.name,
-    isActive: typeof item.isActive === "boolean" ? item.isActive : true,
-  }))
+  return items.map((item, index) =>
+    withCreatedAt(
+      {
+        id: item.id,
+        customerId: typeof item.customerId === "string" ? item.customerId : "",
+        name: item.name,
+        isActive: typeof item.isActive === "boolean" ? item.isActive : true,
+      },
+      index
+    )
+  )
 }
 
 function migrateDiary(

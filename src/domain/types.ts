@@ -12,6 +12,7 @@ export type Company = {
   id: string
   name: string
   isActive: boolean
+  createdAt: string
 }
 
 export type Customer = {
@@ -20,6 +21,7 @@ export type Customer = {
   companyId: string
   name: string
   isActive: boolean
+  createdAt: string
 }
 
 export type Site = {
@@ -28,6 +30,7 @@ export type Site = {
   customerId: string
   name: string
   isActive: boolean
+  createdAt: string
 }
 
 export type SubSite = {
