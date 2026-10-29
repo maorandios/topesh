@@ -1,11 +1,5 @@
-import { Suspense } from "react"
-import { LeaderLoading } from "@/features/leader/leader-states"
-import { DiariesScreen } from "@/features/manager/diaries-screen"
+import { redirect } from "next/navigation"
 
 export default function ManagerDiariesPage() {
-  return (
-    <Suspense fallback={<LeaderLoading />}>
-      <DiariesScreen />
-    </Suspense>
-  )
+  redirect("/manager")
 }

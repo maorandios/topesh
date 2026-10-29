@@ -8,14 +8,15 @@ import { Input } from "@/components/ui/input"
 import { createManagerDiary, useManagerDb } from "@/data/browser-store"
 import { filterManagerDiaries, getManagerDiary, listManagerDiaries, type ManagerDiarySummary } from "@/data/manager"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
+import { DiaryCreatePanel } from "@/features/manager/diary-create-panel"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
-import { Field, fieldClass, NewDiaryLink } from "@/features/manager/fields"
+import { Field, fieldClass, NewDiaryButton } from "@/features/manager/fields"
 import { he } from "@/i18n/he"
 import { addCalendarDays, formatWorkDate, formatWorkDateNumeric, jerusalemDay, jerusalemSpan, jerusalemToday } from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
 import { cn } from "cn"
 
-type StatusFilter = "all" | "pending" | "submitted"
+type StatusFilter = "all" | "pending" | "submitted" | "cancelled"
 type DatePreset = "today" | "week" | "month"
 
 export function DashboardScreen() {
@@ -23,12 +24,14 @@ export function DashboardScreen() {
   const [status, setStatus] = useState<StatusFilter>("all")
   const [datePreset, setDatePreset] = useState<DatePreset | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [workDate, setWorkDate] = useState("")
   const [companyId, setCompanyId] = useState("")
   const [customerId, setCustomerId] = useState("")
   const [siteId, setSiteId] = useState("")
   const [teamLeaderId, setTeamLeaderId] = useState("")
+  const [loaded, setLoaded] = useState({ key: "", extra: 0 })
   if (query.status === "loading") return <LeaderLoading />
   if (query.status === "error") return <LeaderStoreError />
 
@@ -51,25 +54,38 @@ export function DashboardScreen() {
     companyId,
     customerId,
     siteId,
-    subSiteId: "",
   })
+  const filterKey = [search, status, datePreset ?? "", workDate, companyId, customerId, siteId, teamLeaderId].join("|")
+  const extra = loaded.key === filterKey ? loaded.extra : 0
+  const visibleDiaries = diaries.slice(0, 30 + extra)
   const openDiary = openId ? getManagerDiary(db, openId) : null
-  const customers = db.customers.filter((item) => !companyId || item.companyId === companyId)
-  const sites = db.sites.filter((item) => {
-    if (customerId) return item.customerId === customerId
-    if (!companyId) return true
-    return customers.some((customer) => customer.id === item.customerId)
-  })
+  const customers = db.customers
+  const sites = db.sites
   const leaders = db.users.filter((user) => user.role === "teamLeader")
   const dateFilters: Array<[DatePreset, string]> = [
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
     ["month", he.manager.dashboard.quick.month],
   ]
-  const statusFilters: Array<["pending" | "submitted", string]> = [
+  const statusFilters: Array<["pending" | "submitted" | "cancelled", string]> = [
     ["pending", he.manager.dashboard.quick.pending],
     ["submitted", he.manager.dashboard.quick.submitted],
+    ["cancelled", he.manager.dashboard.quick.cancelled],
   ]
+  const hasFilters = Boolean(
+    status !== "all" || datePreset || search || workDate || companyId || customerId || siteId || teamLeaderId
+  )
+  const resetFilters = () => {
+    setStatus("all")
+    setDatePreset(null)
+    setSearch("")
+    setWorkDate("")
+    setCompanyId("")
+    setCustomerId("")
+    setSiteId("")
+    setTeamLeaderId("")
+    setLoaded({ key: "", extra: 0 })
+  }
 
   return (
     <PageFrame>
@@ -77,7 +93,12 @@ export function DashboardScreen() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-xl font-semibold tracking-tight">{he.manager.dashboard.title}</h1>
           <div className="flex flex-wrap items-center gap-2">
-            <NewDiaryLink />
+            <NewDiaryButton
+              onClick={() => {
+                setOpenId(null)
+                setCreateOpen(true)
+              }}
+            />
             <div className="flex flex-wrap gap-1.5">
               {dateFilters.map(([value, label]) => (
                 <FilterChip
@@ -98,6 +119,7 @@ export function DashboardScreen() {
                   onClick={() => setStatus((current) => (current === value ? "all" : value))}
                 />
               ))}
+              <FilterChip pressed={hasFilters} label={he.manager.dashboard.reset} onClick={resetFilters} />
             </div>
           </div>
         </div>
@@ -183,18 +205,42 @@ export function DashboardScreen() {
           <p className="text-sm text-muted-foreground">{he.manager.dashboard.recentEmpty}</p>
         ) : (
           <>
-            <DiaryTable diaries={diaries} onOpen={setOpenId} />
+            <DiaryTable
+              diaries={visibleDiaries}
+              onOpen={(id) => {
+                setCreateOpen(false)
+                setOpenId(id)
+              }}
+            />
             <ul className="overflow-hidden rounded-xl border border-border bg-card lg:hidden">
-              {diaries.map((diary) => (
+              {visibleDiaries.map((diary) => (
                 <li key={diary.id} className="border-b border-border last:border-b-0">
-                  <DiaryRow diary={diary} onOpen={setOpenId} />
+                  <DiaryRow
+                    diary={diary}
+                    onOpen={(id) => {
+                      setCreateOpen(false)
+                      setOpenId(id)
+                    }}
+                  />
                 </li>
               ))}
             </ul>
+            {visibleDiaries.length < diaries.length ? (
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="self-start"
+                onClick={() => setLoaded({ key: filterKey, extra: extra + 50 })}
+              >
+                {he.manager.dashboard.loadMore}
+              </Button>
+            ) : null}
           </>
         )}
       </div>
       <DiaryPanel db={db} diary={openDiary} onOpenChange={(open) => { if (!open) setOpenId(null) }} />
+      <DiaryCreatePanel db={db} open={createOpen} onOpenChange={setCreateOpen} />
     </PageFrame>
   )
 }
@@ -227,8 +273,11 @@ function duplicateNextDay(diary: ManagerDiarySummary) {
   const result = createManagerDiary({
     teamLeaderId: diary.teamLeaderId,
     workDate: addCalendarDays(diary.workDate, 1),
+    companyId: diary.companyId,
+    customerId: diary.customerId,
     siteId: diary.siteId,
-    subSiteId: diary.subSiteId,
+    subSiteName: diary.subSiteName,
+    projectName: diary.projectName,
     workOrderNumber: diary.workOrderNumber,
   })
   if (result.ok) toast.success(he.manager.created)
@@ -285,7 +334,10 @@ function DiaryTable({
             <tr
               key={diary.id}
               tabIndex={0}
-              className="cursor-pointer border-b border-border last:border-b-0 hover:bg-muted"
+              className={cn(
+                "cursor-pointer border-b border-border last:border-b-0 hover:bg-muted",
+                diary.status === "cancelled" && "text-muted-foreground [&>td:not(:last-child)]:line-through"
+              )}
               onClick={() => onOpen(diary.id)}
               onKeyDown={(event) => {
                 if (event.target !== event.currentTarget) return
@@ -355,7 +407,14 @@ function DiaryRow({
 }) {
   return (
     <div className="flex min-h-11 items-center gap-2 px-3 py-1 text-sm">
-      <button type="button" className="min-w-0 flex-1 py-2 text-start" onClick={() => onOpen(diary.id)}>
+      <button
+        type="button"
+        className={cn(
+          "min-w-0 flex-1 py-2 text-start",
+          diary.status === "cancelled" && "text-muted-foreground line-through"
+        )}
+        onClick={() => onOpen(diary.id)}
+      >
         <span className="block truncate font-medium">{diary.subSiteName}</span>
         <span className="block truncate text-xs text-muted-foreground">
           {formatWorkDate(diary.workDate)} · {diary.teamLeaderName} · {diary.siteName}

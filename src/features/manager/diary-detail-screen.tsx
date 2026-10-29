@@ -21,7 +21,6 @@ import {
   useManagerDb,
 } from "@/data/browser-store"
 import { getManagerDiary } from "@/data/manager"
-import { findCustomer } from "@/data/lookups"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { Field, fieldClass } from "@/features/manager/fields"
 import { he } from "@/i18n/he"
@@ -37,7 +36,7 @@ export function ManagerDiaryScreen({ diaryId }: { diaryId: string }) {
     return (
       <PageFrame>
         <div className="flex flex-col gap-3 px-4 py-5">
-          <AppLink href="/manager/diaries" direction="back" className="pressable inline-flex min-h-11 items-center self-start text-sm text-muted-foreground">
+          <AppLink href="/manager" direction="back" className="pressable inline-flex min-h-11 items-center self-start text-sm text-muted-foreground">
             {he.manager.back}
           </AppLink>
           <h1 className="text-xl font-semibold">{he.leader.notFoundTitle}</h1>
@@ -61,19 +60,27 @@ function DiaryDetail({
   const leaders = db.users.filter((user) => user.role === "teamLeader" && (user.isActive || user.id === diary.teamLeaderId))
   const [leaderId, setLeaderId] = useState(diary.teamLeaderId)
   const [workDate, setWorkDate] = useState(diary.workDate)
+  const [companyId, setCompanyId] = useState(diary.companyId)
+  const [customerId, setCustomerId] = useState(diary.customerId)
   const [siteId, setSiteId] = useState(diary.siteId)
-  const [subSiteId, setSubSiteId] = useState(diary.subSiteId)
+  const [subSiteName, setSubSiteName] = useState(diary.subSiteName)
+  const [projectName, setProjectName] = useState(diary.projectName)
   const [workOrder, setWorkOrder] = useState(diary.workOrderNumber)
   const [error, setError] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
-  const subSites = db.subSites.filter((item) => item.siteId === siteId)
+  const companies = db.companies
+  const customers = db.customers
+  const sites = db.sites
 
   const save = () => {
     const result = updateManagerDiary(diary.id, {
       teamLeaderId: leaderId,
       workDate,
+      companyId,
+      customerId,
       siteId,
-      subSiteId,
+      subSiteName,
+      projectName,
       workOrderNumber: workOrder,
     })
     setError(!result.ok)
@@ -87,7 +94,7 @@ function DiaryDetail({
   return (
     <PageFrame>
       <div className="mx-auto flex w-full max-w-xl flex-col gap-5 px-4 py-5 lg:max-w-3xl">
-        <AppLink href="/manager/diaries" direction="back" className="pressable inline-flex min-h-11 items-center self-start text-sm text-muted-foreground">
+        <AppLink href="/manager" direction="back" className="pressable inline-flex min-h-11 items-center self-start text-sm text-muted-foreground">
           {he.manager.back}
         </AppLink>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -112,29 +119,32 @@ function DiaryDetail({
             <Field label={he.manager.diaries.date}>
               <Input type="date" dir="ltr" value={workDate} className="h-11 text-base md:text-base" onChange={(event) => setWorkDate(event.target.value)} />
             </Field>
-            <Field label={he.manager.diaries.site}>
-              <select
-                className={fieldClass}
-                value={siteId}
-                onChange={(event) => {
-                  const next = event.target.value
-                  setSiteId(next)
-                  setSubSiteId(db.subSites.find((item) => item.siteId === next)?.id ?? "")
-                }}
-              >
-                {db.sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {findCustomer(db, site.customerId)?.name} · {site.name}
-                  </option>
+            <Field label={he.manager.diaries.company}>
+              <select className={fieldClass} value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>{company.name}</option>
                 ))}
               </select>
             </Field>
-            <Field label={he.manager.diaries.subSite}>
-              <select className={fieldClass} value={subSiteId} onChange={(event) => setSubSiteId(event.target.value)}>
-                {subSites.map((subSite) => (
-                  <option key={subSite.id} value={subSite.id}>{subSite.name}</option>
+            <Field label={he.manager.diaries.customer}>
+              <select className={fieldClass} value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name}</option>
                 ))}
               </select>
+            </Field>
+            <Field label={he.manager.diaries.site}>
+              <select className={fieldClass} value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>{site.name}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={he.manager.diaries.project}>
+              <Input value={projectName} className="h-11 text-base md:text-base" onChange={(event) => setProjectName(event.target.value)} />
+            </Field>
+            <Field label={he.manager.diaries.subSite}>
+              <Input value={subSiteName} className="h-11 text-base md:text-base" onChange={(event) => setSubSiteName(event.target.value)} />
             </Field>
             <Field label={he.manager.diaries.workOrder}>
               <Input dir="ltr" value={workOrder} className="h-11 text-base md:text-base" onChange={(event) => setWorkOrder(event.target.value)} />
@@ -152,8 +162,14 @@ function DiaryDetail({
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">{he.manager.diaries.leader}</dt>
               <dd>{diary.teamLeaderName}</dd>
+              <dt className="text-muted-foreground">{he.manager.diaries.company}</dt>
+              <dd>{diary.companyName}</dd>
+              <dt className="text-muted-foreground">{he.manager.diaries.customer}</dt>
+              <dd>{diary.customerName}</dd>
               <dt className="text-muted-foreground">{he.manager.diaries.site}</dt>
               <dd>{diary.siteName}</dd>
+              <dt className="text-muted-foreground">{he.manager.diaries.project}</dt>
+              <dd>{diary.projectName || "—"}</dd>
               <dt className="text-muted-foreground">{he.manager.diaries.subSite}</dt>
               <dd>{diary.subSiteName}</dd>
               <dt className="text-muted-foreground">{he.manager.diaries.workOrder}</dt>
@@ -184,7 +200,7 @@ function DiaryDetail({
               size="touch"
               onClick={() => {
                 const result = cancelManagerDiary(diary.id)
-                if (result.ok) router.push("/manager/diaries")
+                if (result.ok) router.push("/manager")
               }}
             >
               {he.manager.cancelAction}

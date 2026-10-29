@@ -12,15 +12,16 @@ import type {
 export const company: Company = {
   id: "company-or-tech",
   name: "אור-טק מערכות בע״מ",
+  isActive: true,
 }
 
 export const managerUser: User = {
   id: "dev-manager",
   fullName: "דנה אלמוג",
-  identityNumber: "000000002",
+  identityNumber: "",
   phone: null,
   email: "manager@example.test",
-  companyId: company.id,
+  companyId: "",
   role: "manager",
   isActive: true,
 }
@@ -31,7 +32,7 @@ export const uriUser: User = {
   identityNumber: "000000000",
   phone: "050-0000000",
   email: null,
-  companyId: company.id,
+  companyId: "",
   role: "teamLeader",
   isActive: true,
 }
@@ -42,21 +43,32 @@ export const noaUser: User = {
   identityNumber: "000000001",
   phone: "052-0000000",
   email: null,
-  companyId: company.id,
+  companyId: "",
   role: "teamLeader",
   isActive: true,
 }
 
-export const users: User[] = [managerUser, uriUser, noaUser]
+export const managerUser2: User = {
+  id: "dev-manager-2",
+  fullName: "יעל כהן",
+  identityNumber: "",
+  phone: null,
+  email: "manager2@example.test",
+  companyId: "",
+  role: "manager",
+  isActive: true,
+}
+
+export const users: User[] = [managerUser, managerUser2, uriUser, noaUser]
 
 export const customers: Customer[] = [
-  { id: "customer-hadar", companyId: company.id, name: "קניון הדר" },
-  { id: "customer-sharon", companyId: company.id, name: "בית חולים השרון" },
+  { id: "customer-hadar", companyId: "", name: "קניון הדר", isActive: true },
+  { id: "customer-sharon", companyId: "", name: "בית חולים השרון", isActive: true },
 ]
 
 export const sites: Site[] = [
-  { id: "site-hadar", customerId: "customer-hadar", name: "קניון הדר" },
-  { id: "site-sharon", customerId: "customer-sharon", name: "בית חולים השרון" },
+  { id: "site-hadar", customerId: "", name: "קניון הדר", isActive: true },
+  { id: "site-sharon", customerId: "", name: "בית חולים השרון", isActive: true },
 ]
 
 export const subSites: SubSite[] = [

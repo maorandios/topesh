@@ -25,13 +25,17 @@ export function RoleSwitcher() {
   const hydrated = useHasHydrated()
   const snapshot = useRepositorySnapshot()
   const [aboutOpen, setAboutOpen] = useState(false)
+  const managers =
+    hydrated && snapshot.status === "ready"
+      ? snapshot.db.users.filter((user) => user.role === "manager")
+      : [devManager]
   const leaders =
     hydrated && snapshot.status === "ready"
       ? snapshot.db.users.filter((user) => user.role === "teamLeader")
       : devTeamLeaders
 
-  const chooseManager = () => {
-    session.setManager()
+  const chooseManager = (userId: string) => {
+    session.setManager(userId)
     router.push("/manager", { transitionTypes: ["nav-forward"] })
   }
 
@@ -49,15 +53,18 @@ export function RoleSwitcher() {
       </div>
 
       <div className="grid gap-3">
-        <RoleCard
-          title={he.role.manager}
-          hint={he.role.managerHint}
-          name={devManager.fullName}
-          detailLabel={he.role.email}
-          detail={devManager.email ?? ""}
-          selected={session.user?.id === devManager.id}
-          onSelect={chooseManager}
-        />
+        {managers.map((manager) => (
+          <RoleCard
+            key={manager.id}
+            title={he.role.manager}
+            hint={manager.isActive ? he.role.managerHint : he.role.inactive}
+            name={manager.fullName}
+            detailLabel={he.role.email}
+            detail={manager.email ?? ""}
+            selected={session.user?.id === manager.id}
+            onSelect={() => chooseManager(manager.id)}
+          />
+        ))}
         {leaders.map((leader) => (
           <RoleCard
             key={leader.id}

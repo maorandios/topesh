@@ -24,7 +24,7 @@ let storeRevision = 0
 type DevSession = {
   role: Role | null
   user: User | null
-  setManager: () => void
+  setManager: (userId?: string) => void
   setTeamLeader: (userId: string) => void
   clearRole: () => void
 }
@@ -63,11 +63,17 @@ function writeSession(role: Role | null, userId: string | null) {
 
 function resolveLeader(userId: string | undefined): User {
   if (!userId) return uriUser
-  const stored = readStoredLeader(userId)
+  const stored = readStoredUser(userId, "teamLeader")
   return stored ?? devTeamLeaders.find((leader) => leader.id === userId) ?? uriUser
 }
 
-function readStoredLeader(userId: string): User | null {
+function resolveManager(userId: string | undefined): User {
+  if (!userId) return devManager
+  const stored = readStoredUser(userId, "manager")
+  return stored ?? (userId === devManager.id ? devManager : devManager)
+}
+
+function readStoredUser(userId: string, role: Role): User | null {
   try {
     const raw = window.localStorage.getItem(MOCK_DB_KEY)
     if (!raw) return null
@@ -82,7 +88,7 @@ function readStoredLeader(userId: string): User | null {
         "id" in user &&
         user.id === userId &&
         "role" in user &&
-        user.role === "teamLeader"
+        user.role === role
     )
     return isStoredUser(match) ? match : null
   } catch {
@@ -104,7 +110,7 @@ function isStoredUser(value: unknown): value is User {
 
 function resolveSession(token: string): { role: Role | null; user: User | null } {
   const [role, userId] = token.split("|")
-  if (role === "manager") return { role, user: devManager }
+  if (role === "manager") return { role, user: resolveManager(userId) }
   if (role === "teamLeader") {
     return { role, user: resolveLeader(userId) }
   }
@@ -118,7 +124,7 @@ export function DevSessionProvider({ children }: { children: ReactNode }) {
     return {
       role: session.role,
       user: session.user,
-      setManager: () => writeSession("manager", devManager.id),
+      setManager: (userId) => writeSession("manager", userId ?? devManager.id),
       setTeamLeader: (userId) => writeSession("teamLeader", userId),
       clearRole: () => writeSession(null, null),
     }

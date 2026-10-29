@@ -1,5 +1,5 @@
-import { DiaryCreateScreen } from "@/features/manager/diary-create-screen"
+import { redirect } from "next/navigation"
 
 export default function NewDiaryPage() {
-  return <DiaryCreateScreen />
+  redirect("/manager")
 }

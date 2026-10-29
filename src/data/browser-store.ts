@@ -5,19 +5,26 @@ import { useDevSession, useHasHydrated } from "@/features/dev-role/dev-session"
 import {
   assignDiary,
   cancelDiary,
+  deleteCompany,
+  deleteCustomer,
   deleteDiary,
+  deleteSite,
+  deleteUser,
   duplicateDiary,
   editDiary,
   markDiaryCancelled,
   saveCompany,
+  deleteComponent,
+  deleteDomain,
   saveComponent,
   saveCustomer,
   saveDomain,
+  saveManagerUser,
   saveSite,
-  saveSubSite,
   saveTeamLeader,
   updateAssignment,
   type DiaryAssignmentInput,
+  type ManagerUserInput,
   type TeamLeaderInput,
 } from "@/data/manager"
 import {
@@ -202,37 +209,85 @@ export function saveManagerCompany(id: string | null, name: string) {
   return db ? mutate(saveCompany(db, id, name)) : { ok: false as const }
 }
 
-export function saveManagerCustomer(id: string | null, companyId: string, name: string) {
+export function saveManagerCustomer(id: string | null, name: string) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveCustomer(db, id, companyId, name)) : { ok: false as const }
+  return db ? mutate(saveCustomer(db, id, name)) : { ok: false as const }
 }
 
-export function saveManagerSite(id: string | null, customerId: string, name: string) {
+export function saveManagerSite(id: string | null, name: string) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveSite(db, id, customerId, name)) : { ok: false as const }
+  return db ? mutate(saveSite(db, id, name)) : { ok: false as const }
 }
 
-export function saveManagerSubSite(id: string | null, siteId: string, name: string) {
+export function deleteManagerCompany(id: string) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveSubSite(db, id, siteId, name)) : { ok: false as const }
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteCompany(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
 }
 
-export function saveManagerDomain(id: string | null, name: string, isActive: boolean) {
+export function deleteManagerCustomer(id: string) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveDomain(db, id, name, isActive)) : { ok: false as const }
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteCustomer(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
+export function deleteManagerSite(id: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteSite(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
+export function deleteManagerUser(id: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteUser(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
+export function saveManagerDomain(id: string | null, name: string) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(saveDomain(db, id, name)) : { ok: false as const }
 }
 
 export function saveManagerComponent(
   id: string | null,
-  input: { domainId: string; name: string; unit: string; isActive: boolean }
+  input: { domainId: string; name: string; unit: string }
 ) {
   const db = ensureRepository().readDb()
   return db ? mutate(saveComponent(db, id, input)) : { ok: false as const }
 }
 
+export function deleteManagerDomain(id: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteDomain(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
+export function deleteManagerComponent(id: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteComponent(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
 export function saveManagerTeamLeader(id: string | null, input: TeamLeaderInput) {
   const db = ensureRepository().readDb()
   return db ? mutate(saveTeamLeader(db, id, input)) : { ok: false as const }
+}
+
+export function saveManagerAccount(id: string | null, input: ManagerUserInput) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(saveManagerUser(db, id, input)) : { ok: false as const }
 }
 
 export function useLeaderDiaries(): LeaderQuery<LeaderDiarySummary[]> {

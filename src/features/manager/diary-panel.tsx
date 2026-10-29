@@ -21,7 +21,7 @@ import {
   editManagerDiary,
   markManagerDiaryCancelled,
 } from "@/data/browser-store"
-import { findCustomer, findDomain, findComponent, activeDomainsFrom } from "@/data/lookups"
+import { findDomain, findComponent, activeDomainsFrom } from "@/data/lookups"
 import { getManagerDiary } from "@/data/manager"
 import { addQuantities, parseQuantityInput } from "@/data/quantity"
 import type { MockDb } from "@/data/seed"
@@ -180,8 +180,11 @@ function DiaryEditor({
   const checks = db.checkboxDefinitions
     .filter((item) => item.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)
+  const [companyId, setCompanyId] = useState(diary.companyId)
+  const [customerId, setCustomerId] = useState(diary.customerId)
   const [siteId, setSiteId] = useState(diary.siteId)
-  const [subSiteId, setSubSiteId] = useState(diary.subSiteId)
+  const [subSiteName, setSubSiteName] = useState(diary.subSiteName)
+  const [projectName, setProjectName] = useState(diary.projectName)
   const [workOrder, setWorkOrder] = useState(diary.workOrderNumber)
   const [workers, setWorkers] = useState(() =>
     diary.workers.length > 0 ? diary.workers.map((worker) => ({ ...worker })) : [{ id: crypto.randomUUID(), fullName: "" }]
@@ -207,7 +210,9 @@ function DiaryEditor({
   const [quantity, setQuantity] = useState("")
   const [itemError, setItemError] = useState("")
   const [error, setError] = useState(false)
-  const subSites = db.subSites.filter((item) => item.siteId === siteId)
+  const companies = db.companies
+  const customers = db.customers
+  const sites = db.sites
   const components = domains.find((domain) => domain.id === domainId)?.components ?? []
 
   const addItem = () => {
@@ -264,8 +269,11 @@ function DiaryEditor({
       {
         teamLeaderId: diary.teamLeaderId,
         workDate: diary.workDate,
+        companyId,
+        customerId,
         siteId,
-        subSiteId,
+        subSiteName,
+        projectName,
         workOrderNumber: workOrder,
       },
       { workers, items: parsedItems, checkedIds, notes }
@@ -292,33 +300,47 @@ function DiaryEditor({
           </p>
           <ReadOnlyField label={he.manager.diaries.leader} value={diary.teamLeaderName} />
           <ReadOnlyField label={he.manager.diaries.date} value={formatWorkDate(diary.workDate)} />
-          <Field label={he.manager.diaries.site}>
-            <select
-              className={fieldClass}
-              value={siteId}
-              onChange={(event) => {
-                const next = event.target.value
-                setSiteId(next)
-                setSubSiteId(db.subSites.find((item) => item.siteId === next)?.id ?? "")
-              }}
-            >
-              {db.sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {findCustomer(db, site.customerId)?.name} · {site.name}
+          <Field label={he.manager.diaries.company}>
+            <select className={fieldClass} value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>
+                  {company.name}
                 </option>
               ))}
             </select>
+          </Field>
+          <Field label={he.manager.diaries.customer}>
+            <select className={fieldClass} value={customerId} onChange={(event) => setCustomerId(event.target.value)}>
+              {customers.map((customer) => (
+                <option key={customer.id} value={customer.id}>
+                  {customer.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={he.manager.diaries.site}>
+            <select className={fieldClass} value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label={he.manager.diaries.project}>
+            <Input
+              value={projectName}
+              className="h-11 text-base md:text-base"
+              onChange={(event) => setProjectName(event.target.value)}
+            />
           </Field>
           <Field label={he.manager.diaries.subSite}>
-            <select className={fieldClass} value={subSiteId} onChange={(event) => setSubSiteId(event.target.value)}>
-              {subSites.map((subSite) => (
-                <option key={subSite.id} value={subSite.id}>
-                  {subSite.name}
-                </option>
-              ))}
-            </select>
+            <Input
+              value={subSiteName}
+              className="h-11 text-base md:text-base"
+              onChange={(event) => setSubSiteName(event.target.value)}
+            />
           </Field>
-          {subSites.length === 0 ? <p className="text-muted-foreground">{he.manager.noSubsites}</p> : null}
           <Field label={he.manager.diaries.workOrder}>
             <Input
               dir="ltr"
@@ -505,6 +527,7 @@ function DiaryView({ diary }: { diary: PanelDiary }) {
     [he.manager.dashboard.columns.company, diary.companyName],
     [he.manager.dashboard.columns.customer, diary.customerName],
     [he.manager.dashboard.columns.site, diary.siteName],
+    [he.manager.diaries.project, diary.projectName || "—"],
     [he.manager.dashboard.columns.subSite, diary.subSiteName],
     [he.manager.dashboard.columns.leader, diary.teamLeaderName],
     [he.manager.diaries.workOrder, diary.workOrderNumber],

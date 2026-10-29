@@ -1,5 +1,5 @@
 import type { ReactNode } from "react"
-import { AppLink } from "@/components/shell/app-link"
+import { Button } from "@/components/ui/button"
 import { he } from "@/i18n/he"
 
 export const fieldClass =
@@ -20,13 +20,16 @@ export function Field({
   )
 }
 
-export function NewDiaryLink({ className = "" }: { className?: string }) {
+export function NewDiaryButton({
+  className = "",
+  onClick,
+}: {
+  className?: string
+  onClick: () => void
+}) {
   return (
-    <AppLink
-      href="/manager/diaries/new"
-      className={`pressable inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground ${className}`}
-    >
+    <Button type="button" size="touch" className={className} onClick={onClick}>
       {he.manager.newDiary}
-    </AppLink>
+    </Button>
   )
 }

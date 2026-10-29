@@ -1,5 +1,5 @@
-import { TeamLeadersScreen } from "@/features/manager/team-leaders-screen"
+import { redirect } from "next/navigation"
 
 export default function TeamLeadersPage() {
-  return <TeamLeadersScreen />
+  redirect("/manager/organization?tab=teamLeaders")
 }

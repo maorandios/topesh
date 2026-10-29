@@ -1,5 +1,5 @@
 import type { DiaryStatus, User } from "@/domain/types"
-import { findComponent, findCustomer, findDomain, findSite, findSubSite, findUser } from "@/data/lookups"
+import { findCompany, findComponent, findCustomer, findDomain, findSite, findUser } from "@/data/lookups"
 import { applyDiaryDraft, type DiaryDraft, type LeaderDiaryItemView } from "@/data/repository"
 import type { MockDb } from "@/data/seed"
 import { jerusalemDay } from "@/lib/format"
@@ -7,8 +7,11 @@ import { jerusalemDay } from "@/lib/format"
 export type DiaryAssignmentInput = {
   teamLeaderId: string
   workDate: string
+  companyId: string
+  customerId: string
   siteId: string
-  subSiteId: string
+  subSiteName: string
+  projectName: string
   workOrderNumber: string
 }
 
@@ -20,7 +23,6 @@ export type ManagerDiarySummary = DiaryAssignmentInput & {
   customerId: string
   customerName: string
   siteName: string
-  subSiteName: string
   status: DiaryStatus
   createdAt: string
   submittedAt: string | null
@@ -42,16 +44,24 @@ export type DiaryFilters = {
   companyId: string
   customerId: string
   siteId: string
-  subSiteId: string
 }
 
 export type TeamLeaderInput = {
   fullName: string
   identityNumber: string
   phone: string
-  companyId: string
-  isActive: boolean
 }
+
+export type ManagerUserInput = {
+  fullName: string
+  email: string
+}
+
+export type DeleteBlockedReason =
+  | "not-found"
+  | "has-diaries"
+  | "has-components"
+  | "last-manager"
 
 const NAME_LIMIT = 80
 
@@ -115,10 +125,16 @@ export function filterManagerDiaries(db: MockDb, filters: DiaryFilters): Manager
     if (filters.companyId && diary.companyId !== filters.companyId) return false
     if (filters.customerId && diary.customerId !== filters.customerId) return false
     if (filters.siteId && diary.siteId !== filters.siteId) return false
-    if (filters.subSiteId && diary.subSiteId !== filters.subSiteId) return false
     if (!query) return true
-    return [diary.workOrderNumber, diary.teamLeaderName, diary.companyName, diary.customerName, diary.siteName, diary.subSiteName]
-      .some((value) => value.includes(query))
+    return [
+      diary.workOrderNumber,
+      diary.teamLeaderName,
+      diary.companyName,
+      diary.customerName,
+      diary.siteName,
+      diary.subSiteName,
+      diary.projectName,
+    ].some((value) => value.includes(query))
   })
 }
 
@@ -189,7 +205,7 @@ export function editDiary(
 ): MockDb | null {
   const current = db.diaries.find((diary) => diary.id === diaryId)
   if (!current) return null
-  const assignment = cleanAssignment(db, input, current.teamLeaderId)
+  const assignment = cleanAssignment(db, input, current.teamLeaderId, current.siteId)
   if (!assignment) return null
   const withAssignment: MockDb = {
     ...db,
@@ -246,8 +262,11 @@ export function duplicateDiary(
     {
       teamLeaderId: current.teamLeaderId,
       workDate: current.workDate,
+      companyId: current.companyId,
+      customerId: current.customerId,
       siteId: current.siteId,
-      subSiteId: current.subSiteId,
+      subSiteName: current.subSiteName,
+      projectName: current.projectName,
       workOrderNumber: current.workOrderNumber,
     },
     createdAt
@@ -258,7 +277,10 @@ export function saveCompany(db: MockDb, id: string | null, name: string): MockDb
   const clean = cleanName(name)
   if (!clean) return null
   if (!id) {
-    return { ...db, companies: [...db.companies, { id: crypto.randomUUID(), name: clean }] }
+    return {
+      ...db,
+      companies: [...db.companies, { id: crypto.randomUUID(), name: clean, isActive: true }],
+    }
   }
   if (!db.companies.some((item) => item.id === id)) return null
   return {
@@ -267,84 +289,98 @@ export function saveCompany(db: MockDb, id: string | null, name: string): MockDb
   }
 }
 
-export function saveCustomer(
-  db: MockDb,
-  id: string | null,
-  companyId: string,
-  name: string
-): MockDb | null {
+export function saveCustomer(db: MockDb, id: string | null, name: string): MockDb | null {
   const clean = cleanName(name)
-  if (!clean || !db.companies.some((item) => item.id === companyId)) return null
+  if (!clean) return null
   if (!id) {
-    return { ...db, customers: [...db.customers, { id: crypto.randomUUID(), companyId, name: clean }] }
+    return {
+      ...db,
+      customers: [...db.customers, { id: crypto.randomUUID(), companyId: "", name: clean, isActive: true }],
+    }
   }
   if (!db.customers.some((item) => item.id === id)) return null
   return {
     ...db,
-    customers: db.customers.map((item) =>
-      item.id === id ? { ...item, companyId, name: clean } : item
-    ),
+    customers: db.customers.map((item) => (item.id === id ? { ...item, name: clean } : item)),
   }
 }
 
-export function saveSite(
-  db: MockDb,
-  id: string | null,
-  customerId: string,
-  name: string
-): MockDb | null {
+export function saveSite(db: MockDb, id: string | null, name: string): MockDb | null {
   const clean = cleanName(name)
-  if (!clean || !db.customers.some((item) => item.id === customerId)) return null
+  if (!clean) return null
   if (!id) {
-    return { ...db, sites: [...db.sites, { id: crypto.randomUUID(), customerId, name: clean }] }
+    return {
+      ...db,
+      sites: [...db.sites, { id: crypto.randomUUID(), customerId: "", name: clean, isActive: true }],
+    }
   }
   if (!db.sites.some((item) => item.id === id)) return null
   return {
     ...db,
-    sites: db.sites.map((item) => (item.id === id ? { ...item, customerId, name: clean } : item)),
+    sites: db.sites.map((item) => (item.id === id ? { ...item, name: clean } : item)),
   }
 }
 
-export function saveSubSite(
-  db: MockDb,
-  id: string | null,
-  siteId: string,
-  name: string
-): MockDb | null {
-  const clean = cleanName(name)
-  if (!clean || !db.sites.some((item) => item.id === siteId)) return null
-  if (!id) {
-    return { ...db, subSites: [...db.subSites, { id: crypto.randomUUID(), siteId, name: clean }] }
-  }
-  if (!db.subSites.some((item) => item.id === id)) return null
+export function deleteCompany(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.companies.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.diaries.some((diary) => diary.companyId === id)) return { reason: "has-diaries" }
+  return { db: { ...db, companies: db.companies.filter((item) => item.id !== id) } }
+}
+
+export function deleteCustomer(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.customers.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.diaries.some((diary) => diary.customerId === id)) return { reason: "has-diaries" }
+  return { db: { ...db, customers: db.customers.filter((item) => item.id !== id) } }
+}
+
+export function deleteSite(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.sites.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.diaries.some((diary) => diary.siteId === id)) return { reason: "has-diaries" }
   return {
-    ...db,
-    subSites: db.subSites.map((item) => (item.id === id ? { ...item, siteId, name: clean } : item)),
+    db: {
+      ...db,
+      sites: db.sites.filter((item) => item.id !== id),
+      subSites: db.subSites.filter((item) => item.siteId !== id),
+    },
   }
 }
 
-export function saveDomain(
-  db: MockDb,
-  id: string | null,
-  name: string,
-  isActive: boolean
-): MockDb | null {
+export function deleteUser(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  const current = db.users.find((user) => user.id === id)
+  if (!current) return { reason: "not-found" }
+  if (current.role === "teamLeader" && db.diaries.some((diary) => diary.teamLeaderId === id)) {
+    return { reason: "has-diaries" }
+  }
+  if (
+    current.role === "manager" &&
+    current.isActive &&
+    db.users.filter((user) => user.role === "manager" && user.isActive && user.id !== id).length === 0
+  ) {
+    return { reason: "last-manager" }
+  }
+  return { db: { ...db, users: db.users.filter((user) => user.id !== id) } }
+}
+
+export function saveDomain(db: MockDb, id: string | null, name: string): MockDb | null {
   const clean = cleanName(name)
   if (!clean) return null
   if (!id) {
-    return { ...db, domains: [...db.domains, { id: crypto.randomUUID(), name: clean, isActive }] }
+    return {
+      ...db,
+      domains: [...db.domains, { id: crypto.randomUUID(), name: clean, isActive: true }],
+    }
   }
   if (!db.domains.some((item) => item.id === id)) return null
   return {
     ...db,
-    domains: db.domains.map((item) => (item.id === id ? { ...item, name: clean, isActive } : item)),
+    domains: db.domains.map((item) => (item.id === id ? { ...item, name: clean } : item)),
   }
 }
 
 export function saveComponent(
   db: MockDb,
   id: string | null,
-  input: { domainId: string; name: string; unit: string; isActive: boolean }
+  input: { domainId: string; name: string; unit: string }
 ): MockDb | null {
   const name = cleanName(input.name)
   const unit = cleanName(input.unit, 20)
@@ -354,7 +390,7 @@ export function saveComponent(
       ...db,
       components: [
         ...db.components,
-        { id: crypto.randomUUID(), domainId: input.domainId, name, unit, isActive: input.isActive },
+        { id: crypto.randomUUID(), domainId: input.domainId, name, unit, isActive: true },
       ],
     }
   }
@@ -362,9 +398,21 @@ export function saveComponent(
   return {
     ...db,
     components: db.components.map((item) =>
-      item.id === id ? { ...item, domainId: input.domainId, name, unit, isActive: input.isActive } : item
+      item.id === id ? { ...item, domainId: input.domainId, name, unit } : item
     ),
   }
+}
+
+export function deleteDomain(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.domains.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.components.some((item) => item.domainId === id)) return { reason: "has-components" }
+  return { db: { ...db, domains: db.domains.filter((item) => item.id !== id) } }
+}
+
+export function deleteComponent(db: MockDb, id: string): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.components.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.items.some((item) => item.componentId === id)) return { reason: "has-diaries" }
+  return { db: { ...db, components: db.components.filter((item) => item.id !== id) } }
 }
 
 export function saveTeamLeader(
@@ -378,7 +426,6 @@ export function saveTeamLeader(
   if (!fullName || phone.length < 7 || phone.length > 20 || !/^\d{5,9}$/.test(identityNumber)) {
     return null
   }
-  if (!db.companies.some((item) => item.id === input.companyId)) return null
   if (db.users.some((user) => user.identityNumber === identityNumber && user.id !== id)) return null
   if (!id) {
     const nextId = crypto.randomUUID()
@@ -388,9 +435,9 @@ export function saveTeamLeader(
       identityNumber,
       phone,
       email: null,
-      companyId: input.companyId,
+      companyId: "",
       role: "teamLeader",
-      isActive: input.isActive,
+      isActive: true,
     }
     return { id: nextId, db: { ...db, users: [...db.users, user] } }
   }
@@ -401,9 +448,49 @@ export function saveTeamLeader(
     db: {
       ...db,
       users: db.users.map((user) =>
-        user.id === id
-          ? { ...user, fullName, identityNumber, phone, companyId: input.companyId, isActive: input.isActive }
-          : user
+        user.id === id ? { ...user, fullName, identityNumber, phone } : user
+      ),
+    },
+  }
+}
+
+export function saveManagerUser(
+  db: MockDb,
+  id: string | null,
+  input: ManagerUserInput
+): { db: MockDb; id: string } | null {
+  const fullName = cleanName(input.fullName)
+  const email = input.email.trim().toLowerCase()
+  if (!fullName || !isValidEmail(email)) return null
+  if (
+    db.users.some(
+      (user) => user.role === "manager" && (user.email ?? "").toLowerCase() === email && user.id !== id
+    )
+  ) {
+    return null
+  }
+  if (!id) {
+    const nextId = crypto.randomUUID()
+    const user: User = {
+      id: nextId,
+      fullName,
+      identityNumber: "",
+      phone: null,
+      email,
+      companyId: "",
+      role: "manager",
+      isActive: true,
+    }
+    return { id: nextId, db: { ...db, users: [...db.users, user] } }
+  }
+  const current = db.users.find((user) => user.id === id && user.role === "manager")
+  if (!current) return null
+  return {
+    id,
+    db: {
+      ...db,
+      users: db.users.map((user) =>
+        user.id === id ? { ...user, fullName, email } : user
       ),
     },
   }
@@ -412,33 +499,46 @@ export function saveTeamLeader(
 function cleanAssignment(
   db: MockDb,
   input: DiaryAssignmentInput,
-  allowInactiveLeaderId = ""
+  allowInactiveLeaderId = "",
+  allowInactiveSiteId = ""
 ): DiaryAssignmentInput | null {
   const leader = findUser(db, input.teamLeaderId)
+  const company = findCompany(db, input.companyId)
+  const customer = findCustomer(db, input.customerId)
   const site = findSite(db, input.siteId)
-  const subSite = findSubSite(db, input.subSiteId)
+  const subSiteName = input.subSiteName.trim()
+  const projectName = input.projectName.trim()
   const workOrderNumber = input.workOrderNumber.trim()
   if (!leader || leader.role !== "teamLeader") return null
   if (!leader.isActive && leader.id !== allowInactiveLeaderId) return null
-  if (!site || !subSite || subSite.siteId !== site.id) return null
+  if (!company || !customer || !site) return null
+  if (!site.isActive && site.id !== allowInactiveSiteId) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) return null
+  if (!subSiteName || subSiteName.length > NAME_LIMIT) return null
+  if (projectName.length > NAME_LIMIT) return null
   if (!workOrderNumber || workOrderNumber.length > 40) return null
   return {
     teamLeaderId: leader.id,
     workDate: input.workDate,
+    companyId: company.id,
+    customerId: customer.id,
     siteId: site.id,
-    subSiteId: subSite.id,
+    subSiteName,
+    projectName,
     workOrderNumber,
   }
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 120
 }
 
 function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySummary | null {
   const leader = findUser(db, diary.teamLeaderId)
   const site = findSite(db, diary.siteId)
-  const subSite = findSubSite(db, diary.subSiteId)
-  const customer = site ? findCustomer(db, site.customerId) : null
-  const company = customer ? db.companies.find((item) => item.id === customer.companyId) : null
-  if (!leader || !site || !subSite || !customer || !company) return null
+  const customer = findCustomer(db, diary.customerId)
+  const company = findCompany(db, diary.companyId)
+  if (!leader || !site || !customer || !company) return null
   return {
     id: diary.id,
     teamLeaderId: leader.id,
@@ -450,8 +550,8 @@ function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySu
     customerName: customer.name,
     siteId: site.id,
     siteName: site.name,
-    subSiteId: subSite.id,
-    subSiteName: subSite.name,
+    subSiteName: diary.subSiteName,
+    projectName: diary.projectName,
     workOrderNumber: diary.workOrderNumber,
     status: diary.status,
     createdAt: diary.createdAt,

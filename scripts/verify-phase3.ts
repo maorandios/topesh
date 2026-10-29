@@ -3,14 +3,17 @@ import { uriUser } from "@/data/catalog"
 import {
   assignDiary,
   cancelDiary,
+  deleteCompany,
+  deleteSite,
+  deleteUser,
   duplicateDiary,
   getManagerDiary,
   saveCompany,
   saveComponent,
   saveCustomer,
   saveDomain,
+  saveManagerUser,
   saveSite,
-  saveSubSite,
   saveTeamLeader,
   updateAssignment,
 } from "@/data/manager"
@@ -65,11 +68,18 @@ const v1 = {
 
 const migrated = parseDatabase(v1)
 assert.ok(migrated)
-assert.equal(migrated.version, 2)
+assert.equal(migrated.version, 5)
+assert.equal(migrated.companies[0]?.isActive, true)
+assert.equal(migrated.customers[0]?.isActive, true)
+assert.equal(migrated.sites[0]?.isActive, true)
 assert.equal(migrated.diaries.length, 2)
 assert.equal(migrated.companies.length > 0, true)
 const migratedPending = migrated.diaries.find((diary) => diary.id === pending.id)
 const migratedSubmitted = migrated.diaries.find((diary) => diary.id === submitted.id)
+assert.ok(migratedPending?.companyId)
+assert.ok(migratedPending?.customerId)
+assert.equal(migratedPending?.subSiteName, "קומה 1")
+assert.equal(migratedPending?.projectName, "")
 assert.equal(migratedPending?.notes, pending.notes)
 assert.equal(migratedPending?.status, "pending")
 assert.equal(migratedPending?.submittedAt, null)
@@ -97,7 +107,7 @@ assert.equal(leaderSubmitted.workers[0]?.fullName, "עובד שהוגש")
 assert.equal(leaderSubmitted.checkboxes.find((item) => item.checkboxId === "check-night")?.checked, true)
 assertNoWorkOrder(leaderSubmitted)
 const stored = JSON.parse(storage.getItem(MOCK_DB_KEY) ?? "{}") as { version?: number }
-assert.equal(stored.version, 2)
+assert.equal(stored.version, 5)
 const managerMigrated = getManagerDiary(repo.readDb()!, pending.id)
 assert.equal(managerMigrated?.workOrderNumber, "WO-MIG-1")
 
@@ -108,22 +118,17 @@ assert.ok(company)
 db = company
 const companyId = db.companies.at(-1)?.id
 assert.ok(companyId)
-const customer = saveCustomer(db, null, companyId, "לקוח חדש")
+const customer = saveCustomer(db, null, "לקוח חדש")
 assert.ok(customer)
 db = customer
 const customerId = db.customers.at(-1)?.id
 assert.ok(customerId)
-const site = saveSite(db, null, customerId, "אתר חדש")
+const site = saveSite(db, null, "אתר חדש")
 assert.ok(site)
 db = site
 const siteId = db.sites.at(-1)?.id
 assert.ok(siteId)
-const subSite = saveSubSite(db, null, siteId, "אתר משנה חדש")
-assert.ok(subSite)
-db = subSite
-const subSiteId = db.subSites.at(-1)?.id
-assert.ok(subSiteId)
-const domain = saveDomain(db, null, "תחום חדש", true)
+const domain = saveDomain(db, null, "תחום חדש")
 assert.ok(domain)
 db = domain
 const domainId = db.domains.at(-1)?.id
@@ -132,7 +137,6 @@ const component = saveComponent(db, null, {
   domainId,
   name: "רכיב חדש",
   unit: "יח׳",
-  isActive: true,
 })
 assert.ok(component)
 db = component
@@ -142,22 +146,20 @@ const leader = saveTeamLeader(db, null, {
   fullName: "ראש צוות חדש",
   identityNumber: "123456789",
   phone: "053-0000000",
-  companyId,
-  isActive: true,
 })
 assert.ok(leader)
 db = leader.db
-const created = assignDiary(
-  db,
-  {
-    teamLeaderId: leader.id,
-    workDate: "2026-10-28",
-    siteId,
-    subSiteId,
-    workOrderNumber: "WO-NEW-9",
-  },
-  "2026-10-28T06:00:00.000Z"
-)
+const assignment = {
+  teamLeaderId: leader.id,
+  workDate: "2026-10-28",
+  companyId,
+  customerId,
+  siteId,
+  subSiteName: "אתר משנה חדש",
+  projectName: "פרויקט חדש",
+  workOrderNumber: "WO-NEW-9",
+}
+const created = assignDiary(db, assignment, "2026-10-28T06:00:00.000Z")
 assert.ok(created)
 db = created.db
 const leaderRepo = createTeamLeaderRepository(createMemoryStorage({ [MOCK_DB_KEY]: JSON.stringify(db) }))
@@ -185,10 +187,8 @@ assert.equal(managerView?.items[0]?.quantity, 4)
 assert.equal(managerView?.notes, "הערה מהשטח")
 assert.equal(managerView?.checkboxes.find((item) => item.checkboxId === "check-height")?.checked, true)
 assert.equal(updateAssignment(leaderRepo.readDb()!, created.id, {
-  teamLeaderId: leader.id,
+  ...assignment,
   workDate: "2026-10-29",
-  siteId,
-  subSiteId,
   workOrderNumber: "WO-CHANGED",
 }), null)
 assert.equal(cancelDiary(leaderRepo.readDb()!, created.id), null)
@@ -198,21 +198,44 @@ assert.equal(copy.db.workers.some((worker) => worker.diaryId === copy.id), false
 assert.equal(copy.db.items.some((item) => item.diaryId === copy.id), false)
 assert.equal(copy.db.diaries.find((diary) => diary.id === copy.id)?.notes, "")
 assert.equal(copy.db.diaries.find((diary) => diary.id === copy.id)?.status, "pending")
-const inactive = saveTeamLeader(db, leader.id, {
-  fullName: "ראש צוות חדש",
-  identityNumber: "123456789",
-  phone: "053-0000000",
-  companyId,
-  isActive: false,
-})
-assert.ok(inactive)
-assert.equal(assignDiary(inactive.db, {
-  teamLeaderId: leader.id,
-  workDate: "2026-10-28",
-  siteId,
-  subSiteId,
+const inactiveDb = {
+  ...db,
+  users: db.users.map((user) => (user.id === leader.id ? { ...user, isActive: false } : user)),
+}
+assert.equal(assignDiary(inactiveDb, {
+  ...assignment,
   workOrderNumber: "WO-BLOCKED",
 }, "2026-10-28T20:00:00.000Z"), null)
+
+const manager = saveManagerUser(db, null, {
+  fullName: "מנהל חדש",
+  email: "new-manager@example.test",
+})
+assert.ok(manager)
+db = manager.db
+const blockedSiteDelete = deleteSite(db, siteId)
+assert.equal("reason" in blockedSiteDelete && blockedSiteDelete.reason, "has-diaries")
+const emptyCompany = saveCompany(db, null, "חברה למחיקה")
+assert.ok(emptyCompany)
+db = emptyCompany
+const emptyCompanyId = db.companies.at(-1)?.id
+assert.ok(emptyCompanyId)
+const deletedCompany = deleteCompany(db, emptyCompanyId)
+assert.ok("db" in deletedCompany)
+if ("db" in deletedCompany) db = deletedCompany.db
+assert.equal(db.companies.some((item) => item.id === emptyCompanyId), false)
+const leaderDeleteBlocked = deleteUser(db, leader.id)
+assert.equal("reason" in leaderDeleteBlocked && leaderDeleteBlocked.reason, "has-diaries")
+const solo = createSeed()
+const onlyManager = solo.users.find((user) => user.role === "manager" && user.isActive)
+assert.ok(onlyManager)
+const pruned = {
+  ...solo,
+  users: solo.users.filter((user) => user.role !== "manager" || user.id === onlyManager.id),
+}
+assert.equal(pruned.users.filter((user) => user.role === "manager" && user.isActive).length, 1)
+const lastManagerDelete = deleteUser(pruned, onlyManager.id)
+assert.equal("reason" in lastManagerDelete && lastManagerDelete.reason, "last-manager")
 
 console.log("phase 3 checks passed")
 

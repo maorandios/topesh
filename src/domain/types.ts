@@ -11,18 +11,23 @@ export type DiaryStatus = "pending" | "submitted" | "cancelled"
 export type Company = {
   id: string
   name: string
+  isActive: boolean
 }
 
 export type Customer = {
   id: string
+  /** Legacy optional link; new customers are name-only. */
   companyId: string
   name: string
+  isActive: boolean
 }
 
 export type Site = {
   id: string
+  /** Legacy optional link; new sites are name-only. */
   customerId: string
   name: string
+  isActive: boolean
 }
 
 export type SubSite = {
@@ -60,8 +65,11 @@ export type WorkDiary = {
   id: string
   teamLeaderId: string
   workDate: string
+  companyId: string
+  customerId: string
   siteId: string
-  subSiteId: string
+  subSiteName: string
+  projectName: string
   workOrderNumber: string
   status: DiaryStatus
   notes: string
@@ -69,8 +77,8 @@ export type WorkDiary = {
   submittedAt: string | null
 }
 
-/** Team-leader views must not include the work order number. */
-export type TeamLeaderDiary = Omit<WorkDiary, "workOrderNumber">
+/** Team-leader views omit work-order and org assignment IDs. */
+export type TeamLeaderDiary = Omit<WorkDiary, "workOrderNumber" | "companyId" | "customerId">
 
 export type DiaryWorker = {
   id: string

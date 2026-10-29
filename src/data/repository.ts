@@ -1,4 +1,4 @@
-import { findComponent, findDomain, findSite, findSubSite } from "@/data/lookups"
+import { findComponent, findDomain, findSite } from "@/data/lookups"
 import { parseDatabase } from "@/data/migrate"
 import { addQuantities, normalizeQuantity } from "@/data/quantity"
 import { createSeed, type MockDb } from "@/data/seed"
@@ -80,7 +80,7 @@ export function listForLeader(db: MockDb, teamLeaderId: string): LeaderDiarySumm
       id: diary.id,
       workDate: diary.workDate,
       siteName: findSite(db, diary.siteId)?.name ?? "",
-      subSiteName: findSubSite(db, diary.subSiteId)?.name ?? "",
+      subSiteName: diary.subSiteName,
       status: diary.status,
     }))
     .sort(compareSummaries)
@@ -290,13 +290,13 @@ function toDetail(db: MockDb, diary: MockDb["diaries"][number]): LeaderDiaryDeta
     teamLeaderId: diary.teamLeaderId,
     workDate: diary.workDate,
     siteId: diary.siteId,
-    subSiteId: diary.subSiteId,
+    subSiteName: diary.subSiteName,
+    projectName: diary.projectName,
     status: diary.status,
     notes: diary.notes,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
     siteName: findSite(db, diary.siteId)?.name ?? "",
-    subSiteName: findSubSite(db, diary.subSiteId)?.name ?? "",
     workers: db.workers
       .filter((worker) => worker.diaryId === diary.id)
       .map((worker) => ({ id: worker.id, fullName: worker.fullName })),
@@ -336,5 +336,5 @@ function compareSummaries(a: LeaderDiarySummary, b: LeaderDiarySummary) {
 }
 
 function isCurrentVersion(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" && "version" in value && value.version === 2)
+  return Boolean(value && typeof value === "object" && "version" in value && value.version === 5)
 }

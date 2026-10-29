@@ -5,8 +5,6 @@ import {
   FileSpreadsheet,
   History,
   LayoutDashboard,
-  NotebookPen,
-  Users,
   Boxes,
 } from "lucide-react"
 import { he } from "@/i18n/he"
@@ -26,32 +24,20 @@ export const managerPrimaryNav: NavItem[] = [
     icon: LayoutDashboard,
   },
   {
-    href: "/manager/diaries",
-    label: he.nav.diaries,
-    shortLabel: he.nav.diaries,
-    icon: NotebookPen,
-  },
-  {
     href: "/manager/organization",
-    label: he.nav.sites,
-    shortLabel: he.nav.sites,
+    label: he.nav.dataManagement,
+    shortLabel: he.nav.dataManagementShort,
     icon: Building2,
   },
-]
-
-export const managerSecondaryNav: NavItem[] = [
   {
     href: "/manager/catalog",
     label: he.nav.catalog,
     shortLabel: he.nav.catalog,
     icon: Boxes,
   },
-  {
-    href: "/manager/team-leaders",
-    label: he.nav.teamLeaders,
-    shortLabel: he.nav.teamLeaders,
-    icon: Users,
-  },
+]
+
+export const managerSecondaryNav: NavItem[] = [
   {
     href: "/manager/reports",
     label: he.nav.reports,

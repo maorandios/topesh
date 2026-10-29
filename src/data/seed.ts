@@ -26,7 +26,7 @@ import {
 } from "@/data/catalog"
 
 export type MockDb = {
-  version: 2
+  version: 5
   companies: Company[]
   customers: Customer[]
   sites: Site[]
@@ -47,8 +47,11 @@ export function createSeed(): MockDb {
       id: "diary-uri-floor",
       teamLeaderId: uriUser.id,
       workDate: "2026-10-28",
+      companyId: company.id,
+      customerId: "customer-hadar",
       siteId: "site-hadar",
-      subSiteId: "subsite-hadar-floor",
+      subSiteName: "קומה 1",
+      projectName: "שדרוג גילוי אש",
       workOrderNumber: "WO-1001",
       status: "pending",
       notes: "",
@@ -59,8 +62,11 @@ export function createSeed(): MockDb {
       id: "diary-uri-parking",
       teamLeaderId: uriUser.id,
       workDate: "2026-10-28",
+      companyId: company.id,
+      customerId: "customer-hadar",
       siteId: "site-hadar",
-      subSiteId: "subsite-hadar-parking",
+      subSiteName: "חניון",
+      projectName: "התקנת מצלמות",
       workOrderNumber: "WO-1002",
       status: "pending",
       notes: "",
@@ -71,8 +77,11 @@ export function createSeed(): MockDb {
       id: "diary-uri-pumps",
       teamLeaderId: uriUser.id,
       workDate: "2026-10-26",
+      companyId: company.id,
+      customerId: "customer-sharon",
       siteId: "site-sharon",
-      subSiteId: "subsite-sharon-pumps",
+      subSiteName: "חדר משאבות",
+      projectName: "תחזוקה שוטפת",
       workOrderNumber: "WO-1004",
       status: "pending",
       notes: "",
@@ -83,8 +92,11 @@ export function createSeed(): MockDb {
       id: "diary-uri-building",
       teamLeaderId: uriUser.id,
       workDate: "2026-10-21",
+      companyId: company.id,
+      customerId: "customer-sharon",
       siteId: "site-sharon",
-      subSiteId: "subsite-sharon-a",
+      subSiteName: "בניין א",
+      projectName: "התקנת גלאים",
       workOrderNumber: "WO-1003",
       status: "submitted",
       notes: "הותקנו גלאים במסדרון המזרחי.",
@@ -95,8 +107,11 @@ export function createSeed(): MockDb {
       id: "diary-noa-pumps",
       teamLeaderId: noaUser.id,
       workDate: "2026-10-28",
+      companyId: company.id,
+      customerId: "customer-sharon",
       siteId: "site-sharon",
-      subSiteId: "subsite-sharon-pumps",
+      subSiteName: "חדר משאבות",
+      projectName: "בדיקות תקופתיות",
       workOrderNumber: "WO-2001",
       status: "pending",
       notes: "",
@@ -107,8 +122,11 @@ export function createSeed(): MockDb {
       id: "diary-noa-parking",
       teamLeaderId: noaUser.id,
       workDate: "2026-10-15",
+      companyId: company.id,
+      customerId: "customer-hadar",
       siteId: "site-hadar",
-      subSiteId: "subsite-hadar-parking",
+      subSiteName: "חניון",
+      projectName: "מערכת כריזה",
       workOrderNumber: "WO-2002",
       status: "submitted",
       notes: "כריזה בחניון.",
@@ -139,7 +157,7 @@ export function createSeed(): MockDb {
   ]
 
   return {
-    version: 2,
+    version: 5,
     companies: [company],
     customers,
     sites,
