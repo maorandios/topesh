@@ -1,6 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react"
 import {
   Building2,
   Cable,
@@ -733,6 +740,8 @@ function MissingDot({ show, size = 7 }: { show?: boolean; size?: number }) {
   )
 }
 
+const fieldGridClass = "grid grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2"
+
 function FieldLead({
   icon: Icon,
   missing,
@@ -743,8 +752,12 @@ function FieldLead({
   iconClassName?: string
 }) {
   return (
-    <span className="inline-flex shrink-0 items-center" style={{ gap: 6 }}>
-      <MissingDot show={missing} size={7} />
+    <span className="relative inline-flex size-4 shrink-0 items-center justify-center justify-self-center">
+      {missing ? (
+        <span className="absolute -end-1 -top-0.5">
+          <MissingDot show size={7} />
+        </span>
+      ) : null}
       <Icon className={cn("shrink-0", iconClassName)} aria-hidden />
     </span>
   )
@@ -779,18 +792,15 @@ function FactSelect({
   onChange: (value: string) => void
 }) {
   const body = (
-    <>
-      <div className="mb-0.5 flex items-center text-[11px] text-muted-foreground" style={{ gap: 8 }}>
-        <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
-        <span className="truncate">{label}</span>
+    <div className={fieldGridClass}>
+      <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
+      <div className="min-w-0">
+        <div className="mb-0.5 truncate text-[11px] text-muted-foreground">{label}</div>
+        <p className="truncate text-sm font-medium" style={missing ? { color: "#dc2626" } : undefined}>
+          {display}
+        </p>
       </div>
-      <p
-        className="truncate ps-7 text-sm font-medium"
-        style={missing ? { color: "#dc2626" } : undefined}
-      >
-        {display}
-      </p>
-    </>
+    </div>
   )
   if (!editing) {
     return (
@@ -851,10 +861,13 @@ function FactText({
     if (active) inputRef.current?.focus()
   }, [active])
 
-  const labelRow = (
-    <div className="mb-0.5 flex items-center text-[11px] text-muted-foreground" style={{ gap: 8 }}>
+  const shell = (content: ReactNode) => (
+    <div className={fieldGridClass}>
       <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
-      <span className="truncate">{label}</span>
+      <div className="min-w-0">
+        <div className="mb-0.5 truncate text-[11px] text-muted-foreground">{label}</div>
+        {content}
+      </div>
     </div>
   )
 
@@ -865,13 +878,11 @@ function FactText({
         className={cn("min-w-0", missing && "rounded-md p-1")}
         style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
       >
-        {labelRow}
-        <p
-          className="truncate ps-7 text-sm font-medium"
-          style={missing ? { color: "#dc2626" } : undefined}
-        >
-          {value}
-        </p>
+        {shell(
+          <p className="truncate text-sm font-medium" style={missing ? { color: "#dc2626" } : undefined}>
+            {value}
+          </p>
+        )}
       </li>
     )
   }
@@ -883,18 +894,19 @@ function FactText({
         className={cn("min-w-0", missing && "rounded-md p-1")}
         style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
       >
-        {labelRow}
-        <Input
-          ref={inputRef}
-          dir={dir}
-          value={draftValue}
-          className="ms-7 h-7 w-[calc(100%-1.75rem)] border-0 bg-muted/40 px-1.5 text-sm font-medium shadow-none md:text-sm"
-          onChange={(event) => onChange(event.target.value)}
-          onBlur={onDone}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === "Escape") onDone()
-          }}
-        />
+        {shell(
+          <Input
+            ref={inputRef}
+            dir={dir}
+            value={draftValue}
+            className="h-7 w-full border-0 bg-muted/40 px-1.5 text-sm font-medium shadow-none md:text-sm"
+            onChange={(event) => onChange(event.target.value)}
+            onBlur={onDone}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === "Escape") onDone()
+            }}
+          />
+        )}
       </li>
     )
   }
@@ -902,8 +914,7 @@ function FactText({
   return (
     <li className="min-w-0">
       <button type="button" className={editTriggerClass} onClick={onActivate}>
-        {labelRow}
-        <p className="truncate ps-7 text-start text-sm font-medium">{value || "—"}</p>
+        {shell(<p className="truncate text-start text-sm font-medium">{value || "—"}</p>)}
       </button>
     </li>
   )
@@ -922,10 +933,11 @@ function WorkersSection({
   const rows = workers.length > 0 ? workers : [{ id: "__empty__", fullName: "" }]
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <SectionTitle icon={Users}>{he.leader.form.workersTitle}</SectionTitle>
-        {editing ? (
+    <SectionShell
+      icon={Users}
+      title={he.leader.form.workersTitle}
+      action={
+        editing ? (
           <button
             type="button"
             className={sectionAddClass}
@@ -943,8 +955,9 @@ function WorkersSection({
           >
             <Plus className="size-3.5" aria-hidden />
           </button>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {editing ? (
         <div className="flex flex-col gap-2">
           {rows.map((worker) => (
@@ -991,7 +1004,7 @@ function WorkersSection({
           ))}
         </p>
       )}
-    </section>
+    </SectionShell>
   )
 }
 
@@ -1032,9 +1045,11 @@ function InstallationsTable({
   }
 
   return (
-    <section
-      data-missing={missing ? "true" : undefined}
-      className={cn("flex flex-col gap-2", missing && "rounded-md px-2 py-2")}
+    <SectionShell
+      icon={Cable}
+      missing={missing}
+      title={he.leader.form.workTitle}
+      className={cn(missing && "rounded-md px-2 py-2")}
       style={
         missing
           ? {
@@ -1043,12 +1058,8 @@ function InstallationsTable({
             }
           : undefined
       }
-    >
-      <div className="flex items-center justify-between gap-2">
-        <SectionTitle icon={Cable} missing={missing}>
-          {he.leader.form.workTitle}
-        </SectionTitle>
-        {editing ? (
+      action={
+        editing ? (
           <DropdownMenu>
             <DropdownMenuTrigger className={sectionAddClass}>
               <Plus className="size-3.5" aria-hidden />
@@ -1066,11 +1077,12 @@ function InstallationsTable({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {items.length === 0 ? (
         <p
-          className={cn("ps-7 text-xs", missing ? "font-medium" : "text-muted-foreground")}
+          className={cn("text-xs", missing ? "font-medium" : "text-muted-foreground")}
           style={missing ? { color: "#dc2626" } : undefined}
         >
           {he.leader.form.readOnlyItems}
@@ -1204,7 +1216,7 @@ function InstallationsTable({
           </table>
         </div>
       )}
-    </section>
+    </SectionShell>
   )
 }
 
@@ -1309,10 +1321,11 @@ function SafetySection({
     )
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <SectionTitle icon={Info}>{he.leader.form.checksTitle}</SectionTitle>
-        {editing ? (
+    <SectionShell
+      icon={Info}
+      title={he.leader.form.checksTitle}
+      action={
+        editing ? (
           <DropdownMenu>
             <DropdownMenuTrigger className={sectionAddClass}>
               <Plus className="size-3.5" aria-hidden />
@@ -1336,10 +1349,11 @@ function SafetySection({
               })}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : null}
-      </div>
+        ) : null
+      }
+    >
       {content}
-    </section>
+    </SectionShell>
   )
 }
 
@@ -1353,8 +1367,7 @@ function NotesSection({
   onChange: (value: string) => void
 }) {
   return (
-    <section className="flex flex-col gap-1.5">
-      <SectionTitle icon={MessageSquareText}>{he.leader.form.notesTitle}</SectionTitle>
+    <SectionShell icon={MessageSquareText} title={he.leader.form.notesTitle}>
       {!editing ? (
         notes.trim() ? (
           <p className="text-sm leading-5">{notes.trim()}</p>
@@ -1370,27 +1383,40 @@ function NotesSection({
           onChange={(event) => onChange(event.target.value)}
         />
       )}
-    </section>
+    </SectionShell>
   )
 }
 
-function SectionTitle({
+function SectionShell({
   icon: Icon,
   missing,
+  title,
+  action,
+  className,
+  style,
   children,
 }: {
   icon: LucideIcon
   missing?: boolean
+  title: string
+  action?: ReactNode
+  className?: string
+  style?: CSSProperties
   children: ReactNode
 }) {
   return (
-    <h3
-      className="flex items-center text-[11px] font-semibold tracking-wide text-muted-foreground"
-      style={{ gap: 8 }}
+    <section
+      data-missing={missing ? "true" : undefined}
+      className={cn(fieldGridClass, "gap-y-1.5", className)}
+      style={style}
     >
       <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
-      <span>{children}</span>
-    </h3>
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <h3 className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground">{title}</h3>
+        {action}
+      </div>
+      <div className="col-start-2 min-w-0">{children}</div>
+    </section>
   )
 }
 
