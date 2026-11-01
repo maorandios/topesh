@@ -661,8 +661,11 @@ function CatalogSelect({
   )
 }
 
-function unitOptionsFor(current: string) {
-  const options = UNIT_OPTIONS.map((option) => ({ value: option.value, label: option.label }))
+function unitOptionsFor(current: string): Array<{ value: string; label: string }> {
+  const options: Array<{ value: string; label: string }> = UNIT_OPTIONS.map((option) => ({
+    value: option.value,
+    label: option.label,
+  }))
   if (current && !options.some((option) => option.value === current)) {
     options.push({ value: current, label: current })
   }

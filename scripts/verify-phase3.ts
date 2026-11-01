@@ -15,6 +15,10 @@ import {
   saveManagerUser,
   saveSite,
   saveTeamLeader,
+  setCompanyActive,
+  setCustomerActive,
+  setSiteActive,
+  setUserActive,
   updateAssignment,
 } from "@/data/manager"
 import { parseDatabase } from "@/data/migrate"
@@ -118,17 +122,19 @@ assert.ok(company)
 db = company
 const companyId = db.companies.at(-1)?.id
 assert.ok(companyId)
-const customer = saveCustomer(db, null, "לקוח חדש")
+const customer = saveCustomer(db, null, { name: "לקוח חדש", companyId })
 assert.ok(customer)
 db = customer
 const customerId = db.customers.at(-1)?.id
 assert.ok(customerId)
-const site = saveSite(db, null, "אתר חדש")
+assert.equal(db.customers.at(-1)?.companyId, companyId)
+const site = saveSite(db, null, { name: "אתר חדש", customerId })
 assert.ok(site)
 db = site
 const siteId = db.sites.at(-1)?.id
 assert.ok(siteId)
-const domain = saveDomain(db, null, "תחום חדש")
+assert.equal(db.sites.at(-1)?.customerId, customerId)
+const domain = saveDomain(db, null, "מערכת חדשה")
 assert.ok(domain)
 db = domain
 const domainId = db.domains.at(-1)?.id
@@ -136,7 +142,7 @@ assert.ok(domainId)
 const component = saveComponent(db, null, {
   domainId,
   name: "רכיב חדש",
-  unit: "יח׳",
+  unit: "יחידות",
 })
 assert.ok(component)
 db = component
@@ -146,9 +152,11 @@ const leader = saveTeamLeader(db, null, {
   fullName: "ראש צוות חדש",
   identityNumber: "123456789",
   phone: "053-0000000",
+  companyId,
 })
 assert.ok(leader)
 db = leader.db
+assert.equal(db.users.find((user) => user.id === leader.id)?.companyId, companyId)
 const assignment = {
   teamLeaderId: leader.id,
   workDate: "2026-10-28",
@@ -209,10 +217,45 @@ assert.equal(assignDiary(inactiveDb, {
 
 const manager = saveManagerUser(db, null, {
   fullName: "מנהל חדש",
+  identityNumber: "987654321",
   email: "new-manager@example.test",
+  companyId,
 })
 assert.ok(manager)
 db = manager.db
+const inactiveCompany = setCompanyActive(db, companyId, false)
+assert.ok(inactiveCompany)
+assert.equal(
+  assignDiary(
+    inactiveCompany,
+    { ...assignment, workOrderNumber: "WO-INACTIVE-CO" },
+    "2026-10-28T20:30:00.000Z"
+  ),
+  null
+)
+db = setCompanyActive(inactiveCompany, companyId, true)!
+const inactiveCustomer = setCustomerActive(db, customerId, false)
+assert.ok(inactiveCustomer)
+assert.equal(
+  assignDiary(
+    inactiveCustomer,
+    { ...assignment, workOrderNumber: "WO-INACTIVE-CU" },
+    "2026-10-28T20:31:00.000Z"
+  ),
+  null
+)
+db = setCustomerActive(inactiveCustomer, customerId, true)!
+const inactiveSite = setSiteActive(db, siteId, false)
+assert.ok(inactiveSite)
+assert.equal(
+  assignDiary(
+    inactiveSite,
+    { ...assignment, workOrderNumber: "WO-INACTIVE-SI" },
+    "2026-10-28T20:32:00.000Z"
+  ),
+  null
+)
+db = setSiteActive(inactiveSite, siteId, true)!
 const blockedSiteDelete = deleteSite(db, siteId)
 assert.equal("reason" in blockedSiteDelete && blockedSiteDelete.reason, "has-diaries")
 const emptyCompany = saveCompany(db, null, "חברה למחיקה")
@@ -236,8 +279,19 @@ const pruned = {
 assert.equal(pruned.users.filter((user) => user.role === "manager" && user.isActive).length, 1)
 const lastManagerDelete = deleteUser(pruned, onlyManager.id)
 assert.equal("reason" in lastManagerDelete && lastManagerDelete.reason, "last-manager")
+const lastManagerDeactivate = setUserActive(pruned, onlyManager.id, false)
+assert.equal("reason" in lastManagerDeactivate && lastManagerDeactivate.reason, "last-manager")
+assert.ok(createSeed().diaries.every((diary) => typeof diary.subSiteName === "string"))
+assert.equal(
+  createSeed().customers.every((item) => typeof item.companyId === "string" && item.companyId.length > 0),
+  true
+)
+assert.equal(
+  createSeed().sites.every((item) => typeof item.customerId === "string" && item.customerId.length > 0),
+  true
+)
 
-console.log("phase 3 checks passed")
+console.log("phase 3.6 checks passed")
 
 function assertNoWorkOrder(value: unknown) {
   const serialized = JSON.stringify(value)

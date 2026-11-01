@@ -4,11 +4,13 @@ import { createElement, useState, useSyncExternalStore, type ReactNode } from "r
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   Building2,
+  ChevronDown,
   IdCard,
   Mail,
   MapPin,
   PenLine,
   Phone,
+  Power,
   Search,
   Trash,
   UserRound,
@@ -18,6 +20,13 @@ import {
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Dialog,
@@ -49,40 +58,49 @@ import {
   saveManagerCustomer,
   saveManagerSite,
   saveManagerTeamLeader,
+  setManagerCompanyActive,
+  setManagerCustomerActive,
+  setManagerSiteActive,
+  setManagerUserActive,
   useManagerDb,
 } from "@/data/browser-store"
+import { findCompany, findCustomer } from "@/data/lookups"
 import type { DeleteBlockedReason } from "@/data/manager"
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { he } from "@/i18n/he"
-import { formatWorkDateNumeric } from "@/lib/format"
 import { cn } from "cn"
 
 type TabId = "companies" | "customers" | "sites" | "teamLeaders" | "managers"
 
 type Editor =
   | { kind: "company"; id: string | null; name: string }
-  | { kind: "customer"; id: string | null; name: string }
-  | { kind: "site"; id: string | null; name: string }
+  | { kind: "customer"; id: string | null; name: string; companyId: string }
+  | { kind: "site"; id: string | null; name: string; customerId: string }
   | {
       kind: "teamLeader"
       id: string | null
       fullName: string
       identityNumber: string
       phone: string
+      companyId: string
     }
   | {
       kind: "manager"
       id: string | null
       fullName: string
+      identityNumber: string
       email: string
+      companyId: string
     }
 
 type TableRow = {
   id: string
   cells: string[]
+  isActive: boolean
   onEdit: () => void
   onDelete: () => void
+  onToggleActive: () => void
 }
 
 const tabs: Array<{ id: TabId; label: string }> = [
@@ -112,12 +130,15 @@ export function DataManagementScreen() {
   const initialTab = parseTab(params.get("tab"))
   const [tab, setTab] = useState<TabId>(initialTab)
   const [search, setSearch] = useState("")
-  const [create, setCreate] = useState<Editor>(() => createBlank(initialTab))
+  const [create, setCreate] = useState<Editor>(() => createBlank(initialTab, null))
   const [createError, setCreateError] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
   const [editError, setEditError] = useState(false)
-  const [deleteId, setDeleteId] = useState<{ kind: TabId; id: string } | null>(null)
-  const [blockReason, setBlockReason] = useState<DeleteBlockedReason | null>(null)
+  const [deleteFlow, setDeleteFlow] = useState<
+    | { step: "confirm"; kind: TabId; id: string }
+    | { step: "blocked"; kind: TabId; id: string; reason: DeleteBlockedReason }
+    | null
+  >(null)
 
   if (query.status === "loading") return <LeaderLoading />
   if (query.status === "error") return <LeaderStoreError />
@@ -131,10 +152,27 @@ export function DataManagementScreen() {
     managers: db.users.filter((user) => user.role === "manager").length,
   }
 
+  const toggleActive = (kind: TabId, id: string, next: boolean) => {
+    const result =
+      kind === "companies"
+        ? setManagerCompanyActive(id, next)
+        : kind === "customers"
+          ? setManagerCustomerActive(id, next)
+          : kind === "sites"
+            ? setManagerSiteActive(id, next)
+            : setManagerUserActive(id, next)
+    if (!result.ok) {
+      const reason = "reason" in result ? result.reason : undefined
+      if (reason) toast(he.manager.organization.deleteBlocked[reason])
+      return false
+    }
+    return true
+  }
+
   const chooseTab = (next: TabId) => {
     setTab(next)
     setSearch("")
-    setCreate(createBlank(next))
+    setCreate(createBlank(next, db))
     setCreateError(false)
     setEditor(null)
     setEditError(false)
@@ -148,8 +186,8 @@ export function DataManagementScreen() {
       return
     }
     setCreateError(false)
-    setBlockReason(null)
-    setCreate(createBlank(tab))
+    setDeleteFlow(null)
+    setCreate(createBlank(tab, db))
   }
 
   const saveEdit = () => {
@@ -160,23 +198,40 @@ export function DataManagementScreen() {
       return
     }
     setEditError(false)
-    setBlockReason(null)
+    setDeleteFlow(null)
     setEditor(null)
   }
 
   const runDelete = () => {
-    if (!deleteId) return
-    const result = persistDelete(deleteId.kind, deleteId.id)
-    setDeleteId(null)
+    if (!deleteFlow || deleteFlow.step !== "confirm") return
+    const pending = deleteFlow
+    const result = persistDelete(pending.kind, pending.id)
     if (!result.ok) {
       const reason = "reason" in result ? result.reason : "not-found"
-      setBlockReason(reason)
-      toast(he.manager.organization.deleteBlocked[reason])
+      setDeleteFlow({ step: "blocked", kind: pending.kind, id: pending.id, reason })
       return
     }
-    setBlockReason(null)
+    setDeleteFlow(null)
     toast(he.manager.organization.delete)
   }
+
+  const runBlockedDeactivate = () => {
+    if (!deleteFlow || deleteFlow.step !== "blocked") return
+    if (!lookupIsActive(db, deleteFlow.kind, deleteFlow.id)) {
+      setDeleteFlow(null)
+      return
+    }
+    const ok = toggleActive(deleteFlow.kind, deleteFlow.id, false)
+    if (ok) {
+      toast(he.manager.organization.deactivate)
+      setDeleteFlow(null)
+    }
+  }
+
+  const canOfferDeactivate =
+    deleteFlow?.step === "blocked" &&
+    deleteFlow.reason === "has-diaries" &&
+    lookupIsActive(db, deleteFlow.kind, deleteFlow.id)
 
   return (
     <PageFrame>
@@ -218,10 +273,6 @@ export function DataManagementScreen() {
           </div>
         </div>
 
-        {blockReason ? (
-          <p className="text-sm text-muted-foreground">{he.manager.organization.deleteBlocked[blockReason]}</p>
-        ) : null}
-
         <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start">
           <div className="order-2 flex w-full min-w-0 flex-col gap-2 lg:order-1 lg:w-[60%] lg:shrink-0">
             <div className="relative min-w-0">
@@ -242,17 +293,18 @@ export function DataManagementScreen() {
               search={search}
               onEdit={(next) => {
                 setEditError(false)
-                setBlockReason(null)
+                setDeleteFlow(null)
                 setEditor(next)
               }}
               onDelete={(kind, id) => {
-                setBlockReason(null)
-                setDeleteId({ kind, id })
+                setDeleteFlow({ step: "confirm", kind, id })
               }}
+              onToggleActive={(kind, id, isActive) => toggleActive(kind, id, !isActive)}
             />
           </div>
 
           <CreateCard
+            db={db}
             create={create}
             error={createError}
             onChange={setCreate}
@@ -261,6 +313,7 @@ export function DataManagementScreen() {
         </div>
       </div>
       <EditorPanel
+        db={db}
         editor={editor}
         error={editError}
         onOpenChange={(open) => {
@@ -268,27 +321,73 @@ export function DataManagementScreen() {
         }}
         onChange={setEditor}
         onSave={saveEdit}
+        onToggleActive={
+          editor?.id
+            ? () => {
+                const item = editor
+                if (!item.id) return
+                const kind = editorKindToTab(item.kind)
+                const active = lookupIsActive(db, kind, item.id)
+                toggleActive(kind, item.id, !active)
+              }
+            : undefined
+        }
+        isActive={editor?.id ? lookupIsActive(db, editorKindToTab(editor.kind), editor.id) : undefined}
       />
-      <Dialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
+      <Dialog open={deleteFlow !== null} onOpenChange={(open) => { if (!open) setDeleteFlow(null) }}>
         <DialogContent className="rounded-md sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{he.manager.organization.delete}</DialogTitle>
-            <DialogDescription>{he.manager.organization.deleteConfirm}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-row gap-2 sm:justify-stretch">
-            <Button
-              type="button"
-              size="default"
-              variant="outline"
-              className="h-10 w-[30%]"
-              onClick={() => setDeleteId(null)}
-            >
-              {he.manager.panel.abortAction}
-            </Button>
-            <Button type="button" size="default" className="h-10 w-[70%]" onClick={runDelete}>
-              {he.manager.organization.deleteAction}
-            </Button>
-          </DialogFooter>
+          {deleteFlow?.step === "blocked" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>{he.manager.organization.deleteBlockedTitle}</DialogTitle>
+                <DialogDescription className="space-y-2 text-start">
+                  <span className="block">{he.manager.organization.deleteBlocked[deleteFlow.reason]}</span>
+                  {canOfferDeactivate ? (
+                    <span className="block text-muted-foreground">
+                      {he.manager.organization.deleteBlockedDeactivateHint}
+                    </span>
+                  ) : null}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex-row gap-2 sm:justify-stretch">
+                <Button
+                  type="button"
+                  size="default"
+                  variant="outline"
+                  className={cn("h-10", canOfferDeactivate ? "w-[30%]" : "w-full")}
+                  onClick={() => setDeleteFlow(null)}
+                >
+                  {he.manager.organization.deleteBlockedKeep}
+                </Button>
+                {canOfferDeactivate ? (
+                  <Button type="button" size="default" className="h-10 w-[70%]" onClick={runBlockedDeactivate}>
+                    {he.manager.organization.deactivate}
+                  </Button>
+                ) : null}
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{he.manager.organization.delete}</DialogTitle>
+                <DialogDescription>{he.manager.organization.deleteConfirm}</DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="flex-row gap-2 sm:justify-stretch">
+                <Button
+                  type="button"
+                  size="default"
+                  variant="outline"
+                  className="h-10 w-[30%]"
+                  onClick={() => setDeleteFlow(null)}
+                >
+                  {he.manager.panel.abortAction}
+                </Button>
+                <Button type="button" size="default" className="h-10 w-[70%]" onClick={runDelete}>
+                  {he.manager.organization.deleteAction}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </PageFrame>
@@ -316,37 +415,31 @@ function EntityList({
   search,
   onEdit,
   onDelete,
+  onToggleActive,
 }: {
   db: MockDb
   tab: TabId
   search: string
   onEdit: (editor: Editor) => void
   onDelete: (kind: TabId, id: string) => void
+  onToggleActive: (kind: TabId, id: string, isActive: boolean) => void
 }) {
   const query = search.trim()
 
-  if (tab === "companies" || tab === "customers" || tab === "sites") {
-    const items =
-      tab === "companies"
-        ? db.companies.filter((item) => !query || item.name.includes(query))
-        : tab === "customers"
-          ? db.customers.filter((item) => !query || item.name.includes(query))
-          : db.sites.filter((item) => !query || item.name.includes(query))
-
+  if (tab === "companies") {
+    const items = db.companies.filter((item) => !query || item.name.includes(query))
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
       cells: [
         String(index + 1),
         item.name,
-        formatWorkDateNumeric(item.createdAt.slice(0, 10)),
+        statusLabel(item.isActive),
         String(countDiaries(db, tab, item.id)),
       ],
-      onEdit: () => {
-        if (tab === "companies") onEdit({ kind: "company", id: item.id, name: item.name })
-        else if (tab === "customers") onEdit({ kind: "customer", id: item.id, name: item.name })
-        else onEdit({ kind: "site", id: item.id, name: item.name })
-      },
+      isActive: item.isActive,
+      onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
       onDelete: () => onDelete(tab, item.id),
+      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
     }))
 
     return (
@@ -355,8 +448,74 @@ function EntityList({
         headers={[
           he.manager.organization.index,
           he.manager.organization.name,
-          he.manager.organization.foundedAt,
+          he.manager.organization.status,
           he.manager.organization.diariesCount,
+          he.manager.edit,
+          he.manager.organization.delete,
+        ]}
+        rows={rows}
+      />
+    )
+  }
+
+  if (tab === "customers") {
+    const items = db.customers.filter((item) => !query || item.name.includes(query))
+    const rows: TableRow[] = items.map((item, index) => ({
+      id: item.id,
+      cells: [
+        String(index + 1),
+        item.name,
+        findCompany(db, item.companyId)?.name ?? "—",
+        statusLabel(item.isActive),
+      ],
+      isActive: item.isActive,
+      onEdit: () =>
+        onEdit({ kind: "customer", id: item.id, name: item.name, companyId: item.companyId }),
+      onDelete: () => onDelete(tab, item.id),
+      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
+    }))
+
+    return (
+      <DataTable
+        empty={rows.length === 0}
+        headers={[
+          he.manager.organization.index,
+          he.manager.organization.name,
+          he.manager.organization.company,
+          he.manager.organization.status,
+          he.manager.edit,
+          he.manager.organization.delete,
+        ]}
+        rows={rows}
+      />
+    )
+  }
+
+  if (tab === "sites") {
+    const items = db.sites.filter((item) => !query || item.name.includes(query))
+    const rows: TableRow[] = items.map((item, index) => ({
+      id: item.id,
+      cells: [
+        String(index + 1),
+        item.name,
+        findCustomer(db, item.customerId)?.name ?? "—",
+        statusLabel(item.isActive),
+      ],
+      isActive: item.isActive,
+      onEdit: () =>
+        onEdit({ kind: "site", id: item.id, name: item.name, customerId: item.customerId }),
+      onDelete: () => onDelete(tab, item.id),
+      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
+    }))
+
+    return (
+      <DataTable
+        empty={rows.length === 0}
+        headers={[
+          he.manager.organization.index,
+          he.manager.organization.name,
+          he.manager.organization.customer,
+          he.manager.organization.status,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
@@ -380,9 +539,10 @@ function EntityList({
       cells: [
         String(index + 1),
         item.fullName,
-        item.phone ?? "—",
-        item.identityNumber || "—",
+        findCompany(db, item.companyId)?.name ?? "—",
+        statusLabel(item.isActive),
       ],
+      isActive: item.isActive,
       onEdit: () =>
         onEdit({
           kind: "teamLeader",
@@ -390,8 +550,10 @@ function EntityList({
           fullName: item.fullName,
           identityNumber: item.identityNumber,
           phone: item.phone ?? "",
+          companyId: item.companyId,
         }),
       onDelete: () => onDelete("teamLeaders", item.id),
+      onToggleActive: () => onToggleActive("teamLeaders", item.id, item.isActive),
     }))
 
     return (
@@ -400,8 +562,8 @@ function EntityList({
         headers={[
           he.manager.organization.index,
           he.manager.organization.name,
-          he.manager.teamLeaders.phone,
-          he.manager.teamLeaders.identity,
+          he.manager.teamLeaders.company,
+          he.manager.organization.status,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
@@ -418,14 +580,18 @@ function EntityList({
   const rows: TableRow[] = items.map((item, index) => ({
     id: item.id,
     cells: [String(index + 1), item.fullName, item.email ?? "—", statusLabel(item.isActive)],
+    isActive: item.isActive,
     onEdit: () =>
       onEdit({
         kind: "manager",
         id: item.id,
         fullName: item.fullName,
+        identityNumber: item.identityNumber,
         email: item.email ?? "",
+        companyId: item.companyId,
       }),
     onDelete: () => onDelete("managers", item.id),
+    onToggleActive: () => onToggleActive("managers", item.id, item.isActive),
   }))
 
   return (
@@ -525,9 +691,24 @@ function DataTable({
                     </td>
                   ))}
                   <td className="px-1 py-1 text-center align-middle">
-                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
-                      <PenLine className="size-3.5" aria-hidden />
-                    </RowIconButton>
+                    <div className="flex items-center justify-center gap-0">
+                      <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                        <PenLine className="size-3.5" aria-hidden />
+                      </RowIconButton>
+                      <RowIconButton
+                        label={
+                          row.isActive
+                            ? he.manager.organization.deactivate
+                            : he.manager.organization.activate
+                        }
+                        onClick={row.onToggleActive}
+                      >
+                        <Power
+                          className={cn("size-3.5", !row.isActive && "text-muted-foreground/60")}
+                          aria-hidden
+                        />
+                      </RowIconButton>
+                    </div>
                   </td>
                   <td className="px-1 py-1 text-center align-middle">
                     <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
@@ -561,6 +742,17 @@ function DataTable({
                   <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
                     <PenLine className="size-3.5" aria-hidden />
                   </RowIconButton>
+                  <RowIconButton
+                    label={
+                      row.isActive ? he.manager.organization.deactivate : he.manager.organization.activate
+                    }
+                    onClick={row.onToggleActive}
+                  >
+                    <Power
+                      className={cn("size-3.5", !row.isActive && "text-muted-foreground/60")}
+                      aria-hidden
+                    />
+                  </RowIconButton>
                   <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
                     <Trash className="size-3.5" aria-hidden />
                   </RowIconButton>
@@ -582,11 +774,13 @@ function editorIcon(kind: Editor["kind"]): LucideIcon {
 }
 
 function CreateCard({
+  db,
   create,
   error,
   onChange,
   onSave,
 }: {
+  db: MockDb
   create: Editor
   error: boolean
   onChange: (editor: Editor) => void
@@ -597,23 +791,29 @@ function CreateCard({
       <div className="shrink-0 border-b border-border/70 px-4 py-3">
         <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
       </div>
-      <EditorForm editor={create} error={error} onChange={onChange} onSave={onSave} />
+      <EditorForm db={db} editor={create} error={error} onChange={onChange} onSave={onSave} />
     </section>
   )
 }
 
 function EditorPanel({
+  db,
   editor,
   error,
   onOpenChange,
   onChange,
   onSave,
+  onToggleActive,
+  isActive,
 }: {
+  db: MockDb
   editor: Editor | null
   error: boolean
   onOpenChange: (open: boolean) => void
   onChange: (editor: Editor) => void
   onSave: () => void
+  onToggleActive?: () => void
+  isActive?: boolean
 }) {
   const desktop = useDesktop()
   const open = editor !== null
@@ -623,7 +823,20 @@ function EditorPanel({
       <div className="shrink-0 px-4 py-3">
         <EditorHeader title={title} kind={editor.kind} />
       </div>
-      <EditorForm editor={editor} error={error} onChange={onChange} onSave={onSave} />
+      <EditorForm
+        db={db}
+        editor={editor}
+        error={error}
+        onChange={onChange}
+        onSave={onSave}
+        footerExtra={
+          editor.id && onToggleActive ? (
+            <Button type="button" size="default" variant="outline" className="h-9 w-full" onClick={onToggleActive}>
+              {isActive ? he.manager.organization.deactivate : he.manager.organization.activate}
+            </Button>
+          ) : null
+        }
+      />
     </div>
   ) : null
   if (desktop) {
@@ -690,32 +903,126 @@ function EditorField({
   )
 }
 
+function OrgSelect({
+  value,
+  options,
+  placeholder,
+  onValueChange,
+}: {
+  value: string
+  options: Array<{ value: string; label: string }>
+  placeholder: string
+  onValueChange: (value: string) => void
+}) {
+  const selected = options.find((option) => option.value === value)?.label ?? placeholder
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          editorInputClass,
+          "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+        )}
+      >
+        <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
+          {selected}
+        </span>
+        <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        sideOffset={6}
+        className="max-h-52 min-w-[var(--radix-dropdown-menu-trigger-width)] rounded-md p-1.5"
+      >
+        <DropdownMenuRadioGroup value={value} onValueChange={onValueChange}>
+          {options.map((option) => (
+            <DropdownMenuRadioItem key={option.value || "__empty"} value={option.value} className="rounded-md px-3 py-2">
+              <span className="truncate">{option.label}</span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function companyOptions(db: MockDb, allowEmpty: boolean) {
+  const options = db.companies.map((company) => ({ value: company.id, label: company.name }))
+  if (allowEmpty) {
+    return [{ value: "", label: "—" }, ...options]
+  }
+  return options
+}
+
+function customerOptions(db: MockDb) {
+  return db.customers.map((customer) => ({ value: customer.id, label: customer.name }))
+}
+
 function EditorForm({
+  db,
   editor,
   error,
   onChange,
   onSave,
+  footerExtra,
 }: {
+  db: MockDb
   editor: Editor
   error: boolean
   onChange: (editor: Editor) => void
   onSave: () => void
+  footerExtra?: ReactNode
 }) {
   return (
     <>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         <div className="flex flex-col gap-4 text-sm">
-          {editor.kind === "company" || editor.kind === "customer" || editor.kind === "site" ? (
-            <EditorField
-              icon={editor.kind === "company" ? Building2 : editor.kind === "customer" ? Users : MapPin}
-              label={he.manager.organization.name}
-            >
+          {editor.kind === "company" ? (
+            <EditorField icon={Building2} label={he.manager.organization.name}>
               <Input
                 value={editor.name}
                 className={editorInputClass}
                 onChange={(event) => onChange({ ...editor, name: event.target.value })}
               />
             </EditorField>
+          ) : null}
+          {editor.kind === "customer" ? (
+            <>
+              <EditorField icon={Users} label={he.manager.organization.name}>
+                <Input
+                  value={editor.name}
+                  className={editorInputClass}
+                  onChange={(event) => onChange({ ...editor, name: event.target.value })}
+                />
+              </EditorField>
+              <EditorField icon={Building2} label={he.manager.organization.company}>
+                <OrgSelect
+                  value={editor.companyId}
+                  placeholder={he.manager.organization.company}
+                  options={companyOptions(db, false)}
+                  onValueChange={(companyId) => onChange({ ...editor, companyId })}
+                />
+              </EditorField>
+            </>
+          ) : null}
+          {editor.kind === "site" ? (
+            <>
+              <EditorField icon={MapPin} label={he.manager.organization.name}>
+                <Input
+                  value={editor.name}
+                  className={editorInputClass}
+                  onChange={(event) => onChange({ ...editor, name: event.target.value })}
+                />
+              </EditorField>
+              <EditorField icon={Users} label={he.manager.organization.customer}>
+                <OrgSelect
+                  value={editor.customerId}
+                  placeholder={he.manager.organization.customer}
+                  options={customerOptions(db)}
+                  onValueChange={(customerId) => onChange({ ...editor, customerId })}
+                />
+              </EditorField>
+            </>
           ) : null}
           {editor.kind === "teamLeader" ? (
             <>
@@ -748,6 +1055,14 @@ function EditorForm({
                   onChange={(event) => onChange({ ...editor, phone: event.target.value })}
                 />
               </EditorField>
+              <EditorField icon={Building2} label={he.manager.teamLeaders.company}>
+                <OrgSelect
+                  value={editor.companyId}
+                  placeholder={he.manager.teamLeaders.company}
+                  options={companyOptions(db, false)}
+                  onValueChange={(companyId) => onChange({ ...editor, companyId })}
+                />
+              </EditorField>
             </>
           ) : null}
           {editor.kind === "manager" ? (
@@ -759,6 +1074,19 @@ function EditorForm({
                   onChange={(event) => onChange({ ...editor, fullName: event.target.value })}
                 />
               </EditorField>
+              <EditorField
+                icon={IdCard}
+                label={he.manager.managers.identity}
+                hint={he.manager.teamLeaders.identityInvalid}
+              >
+                <Input
+                  dir="ltr"
+                  inputMode="numeric"
+                  value={editor.identityNumber}
+                  className={editorInputClass}
+                  onChange={(event) => onChange({ ...editor, identityNumber: event.target.value })}
+                />
+              </EditorField>
               <EditorField icon={Mail} label={he.manager.managers.email} hint={he.manager.managers.emailInvalid}>
                 <Input
                   dir="ltr"
@@ -768,12 +1096,21 @@ function EditorForm({
                   onChange={(event) => onChange({ ...editor, email: event.target.value })}
                 />
               </EditorField>
+              <EditorField icon={Building2} label={he.manager.managers.company}>
+                <OrgSelect
+                  value={editor.companyId}
+                  placeholder={he.manager.managers.company}
+                  options={companyOptions(db, true)}
+                  onValueChange={(companyId) => onChange({ ...editor, companyId })}
+                />
+              </EditorField>
             </>
           ) : null}
           {error ? <p className="text-xs text-muted-foreground">{he.manager.invalid}</p> : null}
         </div>
       </div>
-      <div className="border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="flex flex-col gap-2 border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {footerExtra}
         <Button type="button" size="default" className="h-9 w-full" onClick={onSave}>
           {he.manager.save}
         </Button>
@@ -782,31 +1119,69 @@ function EditorForm({
   )
 }
 
-function createBlank(tab: TabId): Editor {
+function createBlank(tab: TabId, db: MockDb | null): Editor {
+  const defaultCompanyId = db?.companies[0]?.id ?? ""
+  const defaultCustomerId = db?.customers[0]?.id ?? ""
   if (tab === "companies") return { kind: "company", id: null, name: "" }
-  if (tab === "customers") return { kind: "customer", id: null, name: "" }
-  if (tab === "sites") return { kind: "site", id: null, name: "" }
+  if (tab === "customers") return { kind: "customer", id: null, name: "", companyId: defaultCompanyId }
+  if (tab === "sites") return { kind: "site", id: null, name: "", customerId: defaultCustomerId }
   if (tab === "teamLeaders") {
-    return { kind: "teamLeader", id: null, fullName: "", identityNumber: "", phone: "" }
+    return {
+      kind: "teamLeader",
+      id: null,
+      fullName: "",
+      identityNumber: "",
+      phone: "",
+      companyId: defaultCompanyId,
+    }
   }
-  return { kind: "manager", id: null, fullName: "", email: "" }
+  return {
+    kind: "manager",
+    id: null,
+    fullName: "",
+    identityNumber: "",
+    email: "",
+    companyId: defaultCompanyId,
+  }
 }
 
 function persistEditor(editor: Editor) {
   if (editor.kind === "company") return saveManagerCompany(editor.id, editor.name)
-  if (editor.kind === "customer") return saveManagerCustomer(editor.id, editor.name)
-  if (editor.kind === "site") return saveManagerSite(editor.id, editor.name)
+  if (editor.kind === "customer") {
+    return saveManagerCustomer(editor.id, { name: editor.name, companyId: editor.companyId })
+  }
+  if (editor.kind === "site") {
+    return saveManagerSite(editor.id, { name: editor.name, customerId: editor.customerId })
+  }
   if (editor.kind === "teamLeader") {
     return saveManagerTeamLeader(editor.id, {
       fullName: editor.fullName,
       identityNumber: editor.identityNumber,
       phone: editor.phone,
+      companyId: editor.companyId,
     })
   }
   return saveManagerAccount(editor.id, {
     fullName: editor.fullName,
+    identityNumber: editor.identityNumber,
     email: editor.email,
+    companyId: editor.companyId,
   })
+}
+
+function editorKindToTab(kind: Editor["kind"]): TabId {
+  if (kind === "company") return "companies"
+  if (kind === "customer") return "customers"
+  if (kind === "site") return "sites"
+  if (kind === "teamLeader") return "teamLeaders"
+  return "managers"
+}
+
+function lookupIsActive(db: MockDb, tab: TabId, id: string): boolean {
+  if (tab === "companies") return db.companies.find((item) => item.id === id)?.isActive ?? false
+  if (tab === "customers") return db.customers.find((item) => item.id === id)?.isActive ?? false
+  if (tab === "sites") return db.sites.find((item) => item.id === id)?.isActive ?? false
+  return db.users.find((user) => user.id === id)?.isActive ?? false
 }
 
 function persistDelete(kind: TabId, id: string) {

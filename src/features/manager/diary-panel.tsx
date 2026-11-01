@@ -52,6 +52,7 @@ import { getManagerDiary } from "@/data/manager"
 import { parseQuantityInput } from "@/data/quantity"
 import type { MockDb } from "@/data/seed"
 import type { DiaryStatus } from "@/domain/types"
+import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { he } from "@/i18n/he"
 import { formatDateTime, formatQuantity, formatWorkDate } from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
@@ -337,6 +338,16 @@ function DiaryBody({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="rounded-md px-3 py-2"
+                onClick={() => {
+                  void exportDiaryPdf(diary)
+                    .then(() => toast.success(he.manager.panel.exportPdfDone))
+                    .catch(() => toast.error(he.manager.panel.exportPdfFailed))
+                }}
+              >
+                {he.manager.panel.exportPdf}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="rounded-md px-3 py-2"
                 disabled={diary.status === "cancelled"}
                 onClick={() => setConfirm("cancel")}
               >
@@ -455,8 +466,12 @@ function DiaryView({
   const teamLeaderName = findUser(db, teamLeaderId)?.fullName ?? diary.teamLeaderName
 
   const companies = db.companies.filter((item) => item.isActive || item.id === companyId)
-  const customers = db.customers.filter((item) => item.isActive || item.id === customerId)
-  const sites = db.sites.filter((item) => item.isActive || item.id === siteId)
+  const customers = db.customers.filter(
+    (item) => (item.isActive || item.id === customerId) && (!companyId || item.companyId === companyId || item.id === customerId)
+  )
+  const sites = db.sites.filter(
+    (item) => (item.isActive || item.id === siteId) && (!customerId || item.customerId === customerId || item.id === siteId)
+  )
   const leaders = db.users.filter(
     (user) => user.role === "teamLeader" && (user.isActive || user.id === teamLeaderId)
   )
@@ -481,9 +496,7 @@ function DiaryView({
     onDraftChange({ ...draft, ...patch })
   }
 
-  useEffect(() => {
-    if (!editing) setTextField(null)
-  }, [editing])
+  const activeTextField = editing ? textField : null
 
   return (
     <div className="flex flex-col gap-4 text-sm">
@@ -517,7 +530,7 @@ function DiaryView({
         />
         <FactText
           editing={editing}
-          active={textField === "project"}
+          active={activeTextField === "project"}
           icon={FolderKanban}
           label={he.manager.diaries.project}
           value={projectName || "—"}
@@ -528,7 +541,7 @@ function DiaryView({
         />
         <FactText
           editing={editing}
-          active={textField === "subSite"}
+          active={activeTextField === "subSite"}
           icon={Layers3}
           label={he.manager.dashboard.columns.subSite}
           value={subSiteName}
@@ -548,7 +561,7 @@ function DiaryView({
         />
         <FactText
           editing={editing}
-          active={textField === "workOrder"}
+          active={activeTextField === "workOrder"}
           icon={FileText}
           label={he.manager.diaries.workOrder}
           value={<BidiText>{workOrderNumber}</BidiText>}
@@ -571,7 +584,7 @@ function DiaryView({
         editing={editing}
         items={items}
         components={allComponents}
-        textField={textField}
+        textField={activeTextField}
         onActivateQty={(id) => setTextField(`qty:${id}`)}
         onDoneQty={() => setTextField(null)}
         onChange={(next) => update({ items: next })}
@@ -587,7 +600,7 @@ function DiaryView({
       <SectionDivider />
       <NotesSection
         editing={editing}
-        active={textField === "notes"}
+        active={activeTextField === "notes"}
         notes={notes}
         onActivate={() => setTextField("notes")}
         onChange={(value) => update({ notes: value })}
@@ -728,10 +741,7 @@ function WorkersSection({
 }) {
   const names = workers.map((worker) => worker.fullName.trim()).filter(Boolean)
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!editing) setOpen(false)
-  }, [editing])
+  const menuOpen = editing && open
 
   const content =
     names.length === 0 ? (
@@ -752,7 +762,7 @@ function WorkersSection({
       <div className="flex items-center justify-between gap-2">
         <SectionTitle icon={Users}>{he.leader.form.workersTitle}</SectionTitle>
         {editing ? (
-          <DropdownMenu open={open} onOpenChange={setOpen}>
+          <DropdownMenu open={menuOpen} onOpenChange={setOpen}>
             <DropdownMenuTrigger className={sectionAddClass}>
               <Plus className="size-3.5" aria-hidden />
               <span className="sr-only">{he.leader.form.addWorker}</span>

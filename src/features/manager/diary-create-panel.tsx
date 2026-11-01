@@ -59,9 +59,9 @@ export function DiaryCreatePanel({
 
 function CreateForm({ db }: { db: MockDb }) {
   const leaders = db.users.filter((user) => user.role === "teamLeader" && user.isActive)
-  const companies = db.companies
-  const customers = db.customers
-  const sites = db.sites
+  const companies = db.companies.filter((item) => item.isActive)
+  const customers = db.customers.filter((item) => item.isActive)
+  const sites = db.sites.filter((item) => item.isActive)
   const orderRef = useRef<HTMLInputElement>(null)
   const [leaderId, setLeaderId] = useState(leaders[0]?.id ?? "")
   const [workDate, setWorkDate] = useState(jerusalemToday())

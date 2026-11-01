@@ -28,7 +28,10 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const items = variant === "manager" ? managerPrimaryNav : leaderNav
   const menuItems = variant === "manager" ? managerNav : null
-  const menuActive = menuItems?.some((item) => isNavActive(pathname, item.href))
+  const menuActive =
+    variant === "manager"
+      ? managerNav.slice(managerPrimaryNav.length).some((item) => isNavActive(pathname, item.href))
+      : false
   const columns = menuItems ? "grid-cols-4" : "grid-cols-2"
 
   return (

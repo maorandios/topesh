@@ -5,6 +5,7 @@ import { MotionConfig } from "motion/react"
 import { DirectionProvider } from "@/components/ui/direction"
 import { Toaster } from "@/components/ui/sonner"
 import { NavigationDirection } from "@/components/motion/navigation-direction"
+import { DevServiceWorkerCleanup } from "@/components/pwa/dev-sw-cleanup"
 import { InstallPrompt } from "@/components/pwa/install-prompt"
 import { DevSessionProvider } from "@/features/dev-role/dev-session"
 
@@ -13,6 +14,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <DirectionProvider direction="rtl">
       <MotionConfig reducedMotion="user">
         <DevSessionProvider>
+          <DevServiceWorkerCleanup />
           <NavigationDirection />
           {children}
           <InstallPrompt />

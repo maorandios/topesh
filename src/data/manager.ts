@@ -51,11 +51,24 @@ export type TeamLeaderInput = {
   fullName: string
   identityNumber: string
   phone: string
+  companyId: string
 }
 
 export type ManagerUserInput = {
   fullName: string
+  identityNumber: string
   email: string
+  companyId: string
+}
+
+export type CustomerInput = {
+  name: string
+  companyId: string
+}
+
+export type SiteInput = {
+  name: string
+  customerId: string
 }
 
 export type DeleteBlockedReason =
@@ -139,6 +152,170 @@ export function filterManagerDiaries(db: MockDb, filters: DiaryFilters): Manager
   })
 }
 
+export type WorkDiarySearchFilters = {
+  from: string
+  to: string
+  companyIds: string[]
+  customerIds: string[]
+  siteIds: string[]
+  workOrderNumber: string
+  teamLeaderIds: string[]
+  statuses: DiaryStatus[]
+}
+
+export const emptyWorkDiarySearchFilters = (): WorkDiarySearchFilters => ({
+  from: "",
+  to: "",
+  companyIds: [],
+  customerIds: [],
+  siteIds: [],
+  workOrderNumber: "",
+  teamLeaderIds: [],
+  statuses: [],
+})
+
+export function validateWorkDiarySearchDates(from: string, to: string): string | null {
+  if (from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) return "invalid-from"
+  if (to && !/^\d{4}-\d{2}-\d{2}$/.test(to)) return "invalid-to"
+  if (from && to && from > to) return "range"
+  return null
+}
+
+/** AND-filter Work Diaries for the Manager reports search screen. */
+export function searchWorkDiaries(db: MockDb, filters: WorkDiarySearchFilters): ManagerDiarySummary[] {
+  if (validateWorkDiarySearchDates(filters.from, filters.to)) return []
+  const workOrderQuery = filters.workOrderNumber.trim()
+  return listManagerDiaries(db).filter((diary) => {
+    if (filters.statuses.length > 0 && !filters.statuses.includes(diary.status)) return false
+    if (filters.from && diary.workDate < filters.from) return false
+    if (filters.to && diary.workDate > filters.to) return false
+    if (filters.companyIds.length > 0 && !filters.companyIds.includes(diary.companyId)) return false
+    if (filters.customerIds.length > 0 && !filters.customerIds.includes(diary.customerId)) return false
+    if (filters.siteIds.length > 0 && !filters.siteIds.includes(diary.siteId)) return false
+    if (filters.teamLeaderIds.length > 0 && !filters.teamLeaderIds.includes(diary.teamLeaderId)) return false
+    if (workOrderQuery && !diary.workOrderNumber.includes(workOrderQuery)) return false
+    return true
+  })
+}
+
+export function workDiarySearchOptions(db: MockDb, filters: WorkDiarySearchFilters) {
+  const diaries = listManagerDiaries(db)
+  const scoped = (omit: Partial<Record<keyof WorkDiarySearchFilters, true>>) =>
+    diaries.filter((diary) => diaryMatchesSearchFilters(diary, filters, omit))
+
+  const companies = uniqueOptions(
+    scoped({ companyIds: true }).map((diary) => ({
+      value: diary.companyId,
+      label: diary.companyName,
+    })),
+    filters.companyIds.map((id) => ({
+      value: id,
+      label: findCompany(db, id)?.name ?? id,
+    })),
+    db.companies.map((item) => ({ value: item.id, label: item.name }))
+  )
+
+  const customers = uniqueOptions(
+    scoped({ customerIds: true }).map((diary) => ({
+      value: diary.customerId,
+      label: diary.customerName,
+    })),
+    filters.customerIds.map((id) => ({
+      value: id,
+      label: findCustomer(db, id)?.name ?? id,
+    })),
+    // Keep org-linked customers available when companies are chosen, even if no diary match yet.
+    db.customers
+      .filter((item) => filters.companyIds.length === 0 || filters.companyIds.includes(item.companyId))
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
+
+  const sites = uniqueOptions(
+    scoped({ siteIds: true }).map((diary) => ({
+      value: diary.siteId,
+      label: diary.siteName,
+    })),
+    filters.siteIds.map((id) => ({
+      value: id,
+      label: findSite(db, id)?.name ?? id,
+    })),
+    db.sites
+      .filter((item) => {
+        if (filters.customerIds.length > 0) return filters.customerIds.includes(item.customerId)
+        if (filters.companyIds.length > 0) {
+          const customer = findCustomer(db, item.customerId)
+          return Boolean(customer && filters.companyIds.includes(customer.companyId))
+        }
+        return true
+      })
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
+
+  const leaders = uniqueOptions(
+    scoped({ teamLeaderIds: true }).map((diary) => ({
+      value: diary.teamLeaderId,
+      label: diary.teamLeaderName,
+    })),
+    filters.teamLeaderIds.map((id) => ({
+      value: id,
+      label: findUser(db, id)?.fullName ?? id,
+    })),
+    db.users
+      .filter((user) => user.role === "teamLeader")
+      .map((user) => ({ value: user.id, label: user.fullName }))
+  )
+
+  return { companies, customers, sites, leaders }
+}
+
+function diaryMatchesSearchFilters(
+  diary: ManagerDiarySummary,
+  filters: WorkDiarySearchFilters,
+  omit: Partial<Record<keyof WorkDiarySearchFilters, true>> = {}
+) {
+  if (!omit.statuses && filters.statuses.length > 0 && !filters.statuses.includes(diary.status)) {
+    return false
+  }
+  if (!omit.from && filters.from && diary.workDate < filters.from) return false
+  if (!omit.to && filters.to && diary.workDate > filters.to) return false
+  if (!omit.companyIds && filters.companyIds.length > 0 && !filters.companyIds.includes(diary.companyId)) {
+    return false
+  }
+  if (!omit.customerIds && filters.customerIds.length > 0 && !filters.customerIds.includes(diary.customerId)) {
+    return false
+  }
+  if (!omit.siteIds && filters.siteIds.length > 0 && !filters.siteIds.includes(diary.siteId)) {
+    return false
+  }
+  if (
+    !omit.teamLeaderIds &&
+    filters.teamLeaderIds.length > 0 &&
+    !filters.teamLeaderIds.includes(diary.teamLeaderId)
+  ) {
+    return false
+  }
+  const workOrderQuery = filters.workOrderNumber.trim()
+  if (!omit.workOrderNumber && workOrderQuery && !diary.workOrderNumber.includes(workOrderQuery)) {
+    return false
+  }
+  return true
+}
+
+function uniqueOptions(
+  ...groups: Array<Array<{ value: string; label: string }>>
+): Array<{ value: string; label: string }> {
+  const map = new Map<string, string>()
+  for (const group of groups) {
+    for (const item of group) {
+      if (!item.value || map.has(item.value)) continue
+      map.set(item.value, item.label || item.value)
+    }
+  }
+  return Array.from(map, ([value, label]) => ({ value, label })).sort((a, b) =>
+    a.label.localeCompare(b.label, "he")
+  )
+}
+
 export function dashboardStats(db: MockDb, today: string) {
   return {
     createdToday: db.diaries.filter((diary) => jerusalemDay(diary.createdAt) === today).length,
@@ -189,7 +366,12 @@ export function updateAssignment(
 ): MockDb | null {
   const current = db.diaries.find((diary) => diary.id === diaryId)
   if (!current || current.status !== "pending") return null
-  const assignment = cleanAssignment(db, input)
+  const assignment = cleanAssignment(db, input, {
+    leaderId: current.teamLeaderId,
+    siteId: current.siteId,
+    companyId: current.companyId,
+    customerId: current.customerId,
+  })
   if (!assignment) return null
   return {
     ...db,
@@ -207,7 +389,12 @@ export function editDiary(
 ): MockDb | null {
   const current = db.diaries.find((diary) => diary.id === diaryId)
   if (!current) return null
-  const assignment = cleanAssignment(db, input, current.teamLeaderId, current.siteId)
+  const assignment = cleanAssignment(db, input, {
+    leaderId: current.teamLeaderId,
+    siteId: current.siteId,
+    companyId: current.companyId,
+    customerId: current.customerId,
+  })
   if (!assignment) return null
   const withAssignment: MockDb = {
     ...db,
@@ -298,9 +485,10 @@ export function saveCompany(db: MockDb, id: string | null, name: string): MockDb
   }
 }
 
-export function saveCustomer(db: MockDb, id: string | null, name: string): MockDb | null {
-  const clean = cleanName(name)
+export function saveCustomer(db: MockDb, id: string | null, input: CustomerInput): MockDb | null {
+  const clean = cleanName(input.name)
   if (!clean) return null
+  if (!db.companies.some((item) => item.id === input.companyId)) return null
   if (!id) {
     return {
       ...db,
@@ -308,7 +496,7 @@ export function saveCustomer(db: MockDb, id: string | null, name: string): MockD
         ...db.customers,
         {
           id: crypto.randomUUID(),
-          companyId: "",
+          companyId: input.companyId,
           name: clean,
           isActive: true,
           createdAt: new Date().toISOString(),
@@ -319,13 +507,16 @@ export function saveCustomer(db: MockDb, id: string | null, name: string): MockD
   if (!db.customers.some((item) => item.id === id)) return null
   return {
     ...db,
-    customers: db.customers.map((item) => (item.id === id ? { ...item, name: clean } : item)),
+    customers: db.customers.map((item) =>
+      item.id === id ? { ...item, name: clean, companyId: input.companyId } : item
+    ),
   }
 }
 
-export function saveSite(db: MockDb, id: string | null, name: string): MockDb | null {
-  const clean = cleanName(name)
+export function saveSite(db: MockDb, id: string | null, input: SiteInput): MockDb | null {
+  const clean = cleanName(input.name)
   if (!clean) return null
+  if (!db.customers.some((item) => item.id === input.customerId)) return null
   if (!id) {
     return {
       ...db,
@@ -333,7 +524,7 @@ export function saveSite(db: MockDb, id: string | null, name: string): MockDb | 
         ...db.sites,
         {
           id: crypto.randomUUID(),
-          customerId: "",
+          customerId: input.customerId,
           name: clean,
           isActive: true,
           createdAt: new Date().toISOString(),
@@ -344,7 +535,56 @@ export function saveSite(db: MockDb, id: string | null, name: string): MockDb | 
   if (!db.sites.some((item) => item.id === id)) return null
   return {
     ...db,
-    sites: db.sites.map((item) => (item.id === id ? { ...item, name: clean } : item)),
+    sites: db.sites.map((item) =>
+      item.id === id ? { ...item, name: clean, customerId: input.customerId } : item
+    ),
+  }
+}
+
+export function setCompanyActive(db: MockDb, id: string, isActive: boolean): MockDb | null {
+  if (!db.companies.some((item) => item.id === id)) return null
+  return {
+    ...db,
+    companies: db.companies.map((item) => (item.id === id ? { ...item, isActive } : item)),
+  }
+}
+
+export function setCustomerActive(db: MockDb, id: string, isActive: boolean): MockDb | null {
+  if (!db.customers.some((item) => item.id === id)) return null
+  return {
+    ...db,
+    customers: db.customers.map((item) => (item.id === id ? { ...item, isActive } : item)),
+  }
+}
+
+export function setSiteActive(db: MockDb, id: string, isActive: boolean): MockDb | null {
+  if (!db.sites.some((item) => item.id === id)) return null
+  return {
+    ...db,
+    sites: db.sites.map((item) => (item.id === id ? { ...item, isActive } : item)),
+  }
+}
+
+export function setUserActive(
+  db: MockDb,
+  id: string,
+  isActive: boolean
+): { db: MockDb } | { reason: DeleteBlockedReason } {
+  const current = db.users.find((user) => user.id === id)
+  if (!current) return { reason: "not-found" }
+  if (
+    current.role === "manager" &&
+    current.isActive &&
+    !isActive &&
+    db.users.filter((user) => user.role === "manager" && user.isActive && user.id !== id).length === 0
+  ) {
+    return { reason: "last-manager" }
+  }
+  return {
+    db: {
+      ...db,
+      users: db.users.map((user) => (user.id === id ? { ...user, isActive } : user)),
+    },
   }
 }
 
@@ -450,9 +690,11 @@ export function saveTeamLeader(
   const fullName = cleanName(input.fullName)
   const phone = input.phone.trim()
   const identityNumber = input.identityNumber.trim()
+  const companyId = input.companyId.trim()
   if (!fullName || phone.length < 7 || phone.length > 20 || !/^\d{5,9}$/.test(identityNumber)) {
     return null
   }
+  if (!db.companies.some((item) => item.id === companyId)) return null
   if (db.users.some((user) => user.identityNumber === identityNumber && user.id !== id)) return null
   if (!id) {
     const nextId = crypto.randomUUID()
@@ -462,7 +704,7 @@ export function saveTeamLeader(
       identityNumber,
       phone,
       email: null,
-      companyId: "",
+      companyId,
       role: "teamLeader",
       isActive: true,
     }
@@ -475,7 +717,7 @@ export function saveTeamLeader(
     db: {
       ...db,
       users: db.users.map((user) =>
-        user.id === id ? { ...user, fullName, identityNumber, phone } : user
+        user.id === id ? { ...user, fullName, identityNumber, phone, companyId } : user
       ),
     },
   }
@@ -488,7 +730,11 @@ export function saveManagerUser(
 ): { db: MockDb; id: string } | null {
   const fullName = cleanName(input.fullName)
   const email = input.email.trim().toLowerCase()
-  if (!fullName || !isValidEmail(email)) return null
+  const identityNumber = input.identityNumber.trim()
+  const companyId = input.companyId.trim()
+  if (!fullName || !isValidEmail(email) || !/^\d{5,9}$/.test(identityNumber)) return null
+  if (companyId && !db.companies.some((item) => item.id === companyId)) return null
+  if (db.users.some((user) => user.identityNumber === identityNumber && user.id !== id)) return null
   if (
     db.users.some(
       (user) => user.role === "manager" && (user.email ?? "").toLowerCase() === email && user.id !== id
@@ -501,10 +747,10 @@ export function saveManagerUser(
     const user: User = {
       id: nextId,
       fullName,
-      identityNumber: "",
+      identityNumber,
       phone: null,
       email,
-      companyId: "",
+      companyId,
       role: "manager",
       isActive: true,
     }
@@ -517,7 +763,7 @@ export function saveManagerUser(
     db: {
       ...db,
       users: db.users.map((user) =>
-        user.id === id ? { ...user, fullName, email } : user
+        user.id === id ? { ...user, fullName, identityNumber, email, companyId } : user
       ),
     },
   }
@@ -526,8 +772,12 @@ export function saveManagerUser(
 function cleanAssignment(
   db: MockDb,
   input: DiaryAssignmentInput,
-  allowInactiveLeaderId = "",
-  allowInactiveSiteId = ""
+  allowInactive: {
+    leaderId?: string
+    siteId?: string
+    companyId?: string
+    customerId?: string
+  } = {}
 ): DiaryAssignmentInput | null {
   const leader = findUser(db, input.teamLeaderId)
   const company = findCompany(db, input.companyId)
@@ -537,9 +787,11 @@ function cleanAssignment(
   const projectName = input.projectName.trim()
   const workOrderNumber = input.workOrderNumber.trim()
   if (!leader || leader.role !== "teamLeader") return null
-  if (!leader.isActive && leader.id !== allowInactiveLeaderId) return null
+  if (!leader.isActive && leader.id !== allowInactive.leaderId) return null
   if (!company || !customer || !site) return null
-  if (!site.isActive && site.id !== allowInactiveSiteId) return null
+  if (!company.isActive && company.id !== allowInactive.companyId) return null
+  if (!customer.isActive && customer.id !== allowInactive.customerId) return null
+  if (!site.isActive && site.id !== allowInactive.siteId) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) return null
   if (!subSiteName || subSiteName.length > NAME_LIMIT) return null
   if (projectName.length > NAME_LIMIT) return null

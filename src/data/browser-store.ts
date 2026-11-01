@@ -22,9 +22,15 @@ import {
   saveManagerUser,
   saveSite,
   saveTeamLeader,
+  setCompanyActive,
+  setCustomerActive,
+  setSiteActive,
+  setUserActive,
   updateAssignment,
+  type CustomerInput,
   type DiaryAssignmentInput,
   type ManagerUserInput,
+  type SiteInput,
   type TeamLeaderInput,
 } from "@/data/manager"
 import {
@@ -209,14 +215,37 @@ export function saveManagerCompany(id: string | null, name: string) {
   return db ? mutate(saveCompany(db, id, name)) : { ok: false as const }
 }
 
-export function saveManagerCustomer(id: string | null, name: string) {
+export function saveManagerCustomer(id: string | null, input: CustomerInput) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveCustomer(db, id, name)) : { ok: false as const }
+  return db ? mutate(saveCustomer(db, id, input)) : { ok: false as const }
 }
 
-export function saveManagerSite(id: string | null, name: string) {
+export function saveManagerSite(id: string | null, input: SiteInput) {
   const db = ensureRepository().readDb()
-  return db ? mutate(saveSite(db, id, name)) : { ok: false as const }
+  return db ? mutate(saveSite(db, id, input)) : { ok: false as const }
+}
+
+export function setManagerCompanyActive(id: string, isActive: boolean) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(setCompanyActive(db, id, isActive)) : { ok: false as const }
+}
+
+export function setManagerCustomerActive(id: string, isActive: boolean) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(setCustomerActive(db, id, isActive)) : { ok: false as const }
+}
+
+export function setManagerSiteActive(id: string, isActive: boolean) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(setSiteActive(db, id, isActive)) : { ok: false as const }
+}
+
+export function setManagerUserActive(id: string, isActive: boolean) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = setUserActive(db, id, isActive)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
 }
 
 export function deleteManagerCompany(id: string) {

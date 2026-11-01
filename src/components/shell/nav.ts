@@ -6,7 +6,6 @@ import {
   History,
   LayoutDashboard,
   Boxes,
-  Settings,
 } from "lucide-react"
 import { he } from "@/i18n/he"
 
@@ -17,12 +16,19 @@ export type NavItem = {
   icon: LucideIcon
 }
 
-export const managerPrimaryNav: NavItem[] = [
+/** Exactly five Manager navigation items (Phase 3.6). */
+export const managerNav: NavItem[] = [
   {
     href: "/manager",
     label: he.nav.dashboard,
     shortLabel: he.nav.dashboardShort,
     icon: LayoutDashboard,
+  },
+  {
+    href: "/manager/diaries",
+    label: he.nav.workDiaries,
+    shortLabel: he.nav.workDiariesShort,
+    icon: ClipboardList,
   },
   {
     href: "/manager/organization",
@@ -33,27 +39,19 @@ export const managerPrimaryNav: NavItem[] = [
   {
     href: "/manager/catalog",
     label: he.nav.catalog,
-    shortLabel: he.nav.catalog,
+    shortLabel: he.nav.catalogShort,
     icon: Boxes,
   },
-]
-
-export const managerSecondaryNav: NavItem[] = [
   {
     href: "/manager/reports",
     label: he.nav.reports,
     shortLabel: he.nav.reports,
     icon: FileSpreadsheet,
   },
-  {
-    href: "/manager/settings",
-    label: he.nav.settings,
-    shortLabel: he.nav.settings,
-    icon: Settings,
-  },
 ]
 
-export const managerNav = [...managerPrimaryNav, ...managerSecondaryNav]
+/** Bottom bar shows the first three items + overflow menu with all five. */
+export const managerPrimaryNav: NavItem[] = managerNav.slice(0, 3)
 
 export const leaderNav: NavItem[] = [
   {

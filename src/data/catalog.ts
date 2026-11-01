@@ -27,10 +27,10 @@ export const companies: Company[] = [
 export const managerUser: User = {
   id: "dev-manager",
   fullName: "דנה אלמוג",
-  identityNumber: "",
+  identityNumber: "200000001",
   phone: null,
   email: "manager@example.test",
-  companyId: "",
+  companyId: company.id,
   role: "manager",
   isActive: true,
 }
@@ -38,10 +38,10 @@ export const managerUser: User = {
 export const managerUser2: User = {
   id: "dev-manager-2",
   fullName: "יעל כהן",
-  identityNumber: "",
+  identityNumber: "200000002",
   phone: null,
   email: "manager2@example.test",
-  companyId: "",
+  companyId: company.id,
   role: "manager",
   isActive: true,
 }
@@ -52,7 +52,7 @@ export const uriUser: User = {
   identityNumber: "000000000",
   phone: "050-0000000",
   email: null,
-  companyId: "",
+  companyId: company.id,
   role: "teamLeader",
   isActive: true,
 }
@@ -63,7 +63,7 @@ export const noaUser: User = {
   identityNumber: "000000001",
   phone: "052-0000000",
   email: null,
-  companyId: "",
+  companyId: company.id,
   role: "teamLeader",
   isActive: true,
 }
@@ -100,7 +100,7 @@ export const teamLeaders: User[] = [
       identityNumber: String(100000000 + n).slice(0, 9),
       phone: `05${n % 5}0-${String(1000000 + n * 137).slice(-7)}`,
       email: null,
-      companyId: "",
+      companyId: companies[n % companies.length]!.id,
       role: "teamLeader" as const,
       isActive: true,
     }
@@ -113,10 +113,10 @@ export const managers: User[] = [
   {
     id: "dev-manager-3",
     fullName: "אמיר לוין",
-    identityNumber: "",
+    identityNumber: "200000003",
     phone: null,
     email: "amir.levin@example.test",
-    companyId: "",
+    companyId: company.id,
     role: "manager",
     isActive: true,
   },
@@ -149,7 +149,7 @@ const customerNames = [
 
 export const customers: Customer[] = customerNames.map((name, index) => ({
   id: index === 0 ? "customer-hadar" : index === 1 ? "customer-sharon" : `customer-${index + 1}`,
-  companyId: "",
+  companyId: companies[index % companies.length]!.id,
   name,
   isActive: true,
   createdAt: `2025-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 27) + 1).padStart(2, "0")}T09:00:00.000Z`,
@@ -191,13 +191,20 @@ const sitePlaces = [
 
 export const sites: Site[] = Array.from({ length: 50 }, (_, index) => {
   const createdAt = `2025-${String((index % 12) + 1).padStart(2, "0")}-${String((index % 27) + 1).padStart(2, "0")}T11:00:00.000Z`
+  const customerId = customers[index % customers.length]!.id
   if (index === 0) {
-    return { id: "site-hadar", customerId: "", name: "קניון הדר", isActive: true, createdAt: "2025-02-10T11:00:00.000Z" }
+    return {
+      id: "site-hadar",
+      customerId: "customer-hadar",
+      name: "קניון הדר",
+      isActive: true,
+      createdAt: "2025-02-10T11:00:00.000Z",
+    }
   }
   if (index === 1) {
     return {
       id: "site-sharon",
-      customerId: "",
+      customerId: "customer-sharon",
       name: "בית חולים השרון",
       isActive: true,
       createdAt: "2025-02-18T11:00:00.000Z",
@@ -208,7 +215,7 @@ export const sites: Site[] = Array.from({ length: 50 }, (_, index) => {
   const suffix = index > 20 ? ` ${Math.floor(index / 10)}` : ""
   return {
     id: `site-${index + 1}`,
-    customerId: "",
+    customerId,
     name: `${prefix} ${place}${suffix}`.trim(),
     isActive: true,
     createdAt,

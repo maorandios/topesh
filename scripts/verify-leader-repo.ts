@@ -11,7 +11,7 @@ const repo = createTeamLeaderRepository(storage)
 const uriDiaries = repo.list(uriUser.id)
 const noaDiaries = repo.list(noaUser.id)
 
-assert.equal(uriDiaries.length, 4)
+assert.equal(uriDiaries.length, 5)
 assert.equal(
   uriDiaries.filter((diary) => diary.workDate === "2026-10-28").length,
   2
