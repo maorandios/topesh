@@ -43,6 +43,7 @@ import {
   toIsoDate,
 } from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
+import { sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
 type DatePreset = "today" | "week" | "month"
@@ -139,7 +140,7 @@ export function DashboardScreen() {
     <div
       role="radiogroup"
       aria-label={he.manager.dashboard.filterTitle}
-      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-white"
+      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-card"
     >
       {quickFilterOptions.map(([value, label]) => (
         <FilterSegment
@@ -181,16 +182,16 @@ export function DashboardScreen() {
           ))}
           <button
             type="button"
-            className="pressable flex flex-col gap-3 rounded-md border border-foreground bg-foreground px-4 py-3.5 text-start text-background"
+            className="pressable flex flex-col gap-3 rounded-md border border-primary bg-primary px-4 py-3.5 text-start text-primary-foreground"
             onClick={() => {
               setOpenId(null)
               setCreateOpen(true)
             }}
           >
-            <span className="text-sm text-background/70">{metrics.newDiary.label}</span>
+            <span className="text-sm text-primary-foreground/80">{metrics.newDiary.label}</span>
             <span className="text-3xl font-semibold tracking-tight">{metrics.newDiary.title}</span>
-            <span className="flex items-center gap-2 text-xs text-background/70">
-              <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
+            <span className="flex items-center gap-2 text-xs text-primary-foreground/80">
+              <span className="size-1.5 shrink-0 rounded-full bg-primary-foreground" aria-hidden />
               <span>{metrics.newDiary.hint}</span>
             </span>
           </button>
@@ -220,7 +221,7 @@ export function DashboardScreen() {
                 value={companyId}
                 options={[
                   { value: "", label: he.manager.all },
-                  ...db.companies.map((company) => ({ value: company.id, label: company.name })),
+                  ...sortSelectOptions(db.companies.map((company) => ({ value: company.id, label: company.name }))),
                 ]}
                 onValueChange={(value) => {
                   setCompanyId(value)
@@ -234,7 +235,7 @@ export function DashboardScreen() {
                 value={customerId}
                 options={[
                   { value: "", label: he.manager.all },
-                  ...customers.map((customer) => ({ value: customer.id, label: customer.name })),
+                  ...sortSelectOptions(customers.map((customer) => ({ value: customer.id, label: customer.name }))),
                 ]}
                 onValueChange={(value) => {
                   setCustomerId(value)
@@ -247,7 +248,7 @@ export function DashboardScreen() {
                 value={siteId}
                 options={[
                   { value: "", label: he.manager.all },
-                  ...sites.map((site) => ({ value: site.id, label: site.name })),
+                  ...sortSelectOptions(sites.map((site) => ({ value: site.id, label: site.name }))),
                 ]}
                 onValueChange={setSiteId}
               />
@@ -257,7 +258,7 @@ export function DashboardScreen() {
                 value={teamLeaderId}
                 options={[
                   { value: "", label: he.manager.all },
-                  ...leaders.map((leader) => ({ value: leader.id, label: leader.fullName })),
+                  ...sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName }))),
                 ]}
                 onValueChange={setTeamLeaderId}
               />
@@ -328,8 +329,8 @@ function FilterSegment({
       className={cn(
         "pressable h-8 shrink-0 px-3 text-xs whitespace-nowrap transition-colors",
         pressed
-          ? "bg-[#13776D] font-medium text-white"
-          : "bg-transparent text-foreground hover:bg-muted/70"
+          ? "bg-primary font-medium text-primary-foreground"
+          : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
       )}
       onClick={onClick}
     >
@@ -475,7 +476,7 @@ function DiaryTable({
 }
 
 const filterControlClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 const EMPTY_FILTER = "__all__"

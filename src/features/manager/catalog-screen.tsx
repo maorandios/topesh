@@ -3,6 +3,8 @@
 import { createElement, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Boxes, ChevronDown, Layers, PenLine, Ruler, Search, Trash, type LucideIcon } from "lucide-react"
+import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
+import { sortSelectOptions } from "@/lib/sort"
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
@@ -75,17 +77,8 @@ const UNIT_OPTIONS = [
 
 const DEFAULT_UNIT = UNIT_OPTIONS[0].value
 
-const panelSurfaceClass =
-  "border-border/40 bg-white/92 shadow-lg backdrop-blur-xl dark:border-border/40 dark:bg-background/90"
-
-const panelSurfaceStyle = {
-  backgroundColor: "rgb(255 255 255 / 0.92)",
-  WebkitBackdropFilter: "blur(16px)",
-  backdropFilter: "blur(16px)",
-} as const
-
 const editorInputClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-muted px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-[#222228]"
 
 export function CatalogScreen() {
   const query = useManagerDb()
@@ -223,7 +216,7 @@ export function CatalogScreen() {
               <Input
                 value={search}
                 placeholder={he.manager.catalog.search}
-                className="h-9 rounded-md border-border bg-white pe-3 ps-9 text-sm shadow-none md:text-sm"
+                className="h-9 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none md:text-sm"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
@@ -702,7 +695,7 @@ function EditorForm({
                 <CatalogSelect
                   value={editor.domainId}
                   placeholder={he.manager.catalog.domain}
-                  options={db.domains.map((domain) => ({ value: domain.id, label: domain.name }))}
+                  options={sortSelectOptions(db.domains.map((domain) => ({ value: domain.id, label: domain.name })))}
                   onValueChange={(domainId) => onChange({ ...editor, domainId })}
                 />
               </EditorField>

@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
+import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -60,16 +61,9 @@ import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { he } from "@/i18n/he"
 import { formatDateTime, formatQuantity, formatWorkDate } from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
+import { compareHebrew, sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
-const panelSurfaceClass =
-  "border-border/40 bg-white/92 shadow-lg backdrop-blur-xl dark:border-border/40 dark:bg-background/90"
-
-const panelSurfaceStyle = {
-  backgroundColor: "rgb(255 255 255 / 0.92)",
-  WebkitBackdropFilter: "blur(16px)",
-  backdropFilter: "blur(16px)",
-} as const
 
 type PanelDiary = NonNullable<ReturnType<typeof getManagerDiary>>
 type DraftItem = {
@@ -192,7 +186,7 @@ function PanelHeader({
         <span
           className={cn(
             "size-2 justify-self-center rounded-full",
-            diary.status === "pending" && "bg-orange-500",
+            diary.status === "pending" && "bg-primary",
             diary.status === "submitted" && "bg-emerald-500",
             diary.status === "cancelled" && "bg-muted-foreground/50"
           )}
@@ -437,7 +431,7 @@ function DiaryBody({
         </div>
         <PanelNoticeBanner />
         {editing ? (
-          <div className="shrink-0 border-t border-border/60 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="shrink-0 border-t border-border/60 bg-card px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 dark:bg-[#16161a]">
             <div className="flex w-full gap-2">
               <Button
                 type="button"
@@ -457,7 +451,7 @@ function DiaryBody({
       </div>
 
       {showMissing && !confirm && !editing && highlightedMissing.length > 0 ? (
-        <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-red-200 border-b-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
+        <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-destructive/40 border-b-0 bg-card px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] dark:bg-[#16161a]">
           <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
           <div className="mb-3 flex items-center" style={{ gap: 10 }}>
             <span
@@ -489,7 +483,7 @@ function DiaryBody({
             className="absolute inset-0 z-20 border-0 bg-transparent"
             onClick={() => setConfirm(null)}
           />
-          <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-border/50 border-b-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
+          <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-border/50 border-b-0 bg-card px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] dark:bg-[#16161a]">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
             <p className="mb-1 text-sm font-medium text-foreground">
               {confirm === "delete"
@@ -582,15 +576,17 @@ function DiaryView({
     .filter((item) => item.isActive || checkedIds.includes(item.id))
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const domains = activeDomainsFrom(db)
-  const allComponents: ComponentOption[] = domains.flatMap((domain) =>
-    domain.components.map((component) => ({
-      id: component.id,
-      name: component.name,
-      unit: component.unit,
-      domainId: domain.id,
-      domainName: domain.name,
-    }))
-  )
+  const allComponents: ComponentOption[] = domains
+    .flatMap((domain) =>
+      domain.components.map((component) => ({
+        id: component.id,
+        name: component.name,
+        unit: component.unit,
+        domainId: domain.id,
+        domainName: domain.name,
+      }))
+    )
+    .sort((a, b) => compareHebrew(a.name, b.name))
   const checkedLabels = checkDefs
     .filter((item) => checkedIds.includes(item.id))
     .map((item) => item.label)
@@ -612,7 +608,7 @@ function DiaryView({
           display={companyName}
           value={companyId}
           missing={missing.has("company")}
-          options={companies.map((item) => ({ value: item.id, label: item.name }))}
+          options={sortSelectOptions(companies.map((item) => ({ value: item.id, label: item.name })))}
           onChange={(value) => update({ companyId: value })}
         />
         <FactSelect
@@ -622,7 +618,7 @@ function DiaryView({
           display={customerName}
           value={customerId}
           missing={missing.has("customer")}
-          options={customers.map((item) => ({ value: item.id, label: item.name }))}
+          options={sortSelectOptions(customers.map((item) => ({ value: item.id, label: item.name })))}
           onChange={(value) => update({ customerId: value })}
         />
         <FactSelect
@@ -632,7 +628,7 @@ function DiaryView({
           display={siteName}
           value={siteId}
           missing={missing.has("site")}
-          options={sites.map((item) => ({ value: item.id, label: item.name }))}
+          options={sortSelectOptions(sites.map((item) => ({ value: item.id, label: item.name })))}
           onChange={(value) => update({ siteId: value })}
         />
         <FactText
@@ -666,7 +662,7 @@ function DiaryView({
           display={teamLeaderName}
           value={teamLeaderId}
           missing={missing.has("leader")}
-          options={leaders.map((item) => ({ value: item.id, label: item.fullName }))}
+          options={sortSelectOptions(leaders.map((item) => ({ value: item.id, label: item.fullName })))}
           onChange={(value) => update({ teamLeaderId: value })}
         />
         <FactText
@@ -1241,7 +1237,9 @@ function ComponentPicker({
               if (component) onPick(component)
             }}
           >
-            {components.map((component) => (
+            {[...components]
+              .sort((a, b) => compareHebrew(a.name, b.name))
+              .map((component) => (
               <DropdownMenuRadioItem key={component.id} value={component.id} className="rounded-md px-3 py-2">
                 <span className="truncate">{component.name}</span>
               </DropdownMenuRadioItem>

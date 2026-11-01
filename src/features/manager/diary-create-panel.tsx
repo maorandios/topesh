@@ -36,23 +36,16 @@ import {
 } from "@/components/ui/sheet"
 import { HebrewDatePicker } from "@/components/hebrew-date-picker"
 import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
+import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
 import { createManagerDiary } from "@/data/browser-store"
 import type { MockDb } from "@/data/seed"
 import { he } from "@/i18n/he"
 import { jerusalemToday } from "@/lib/format"
+import { sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
-const panelSurfaceClass =
-  "border-border/40 bg-white/92 shadow-lg backdrop-blur-xl dark:border-border/40 dark:bg-background/90"
-
-const panelSurfaceStyle = {
-  backgroundColor: "rgb(255 255 255 / 0.92)",
-  WebkitBackdropFilter: "blur(16px)",
-  backdropFilter: "blur(16px)",
-} as const
-
 const editorInputClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-muted px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-[#222228]"
 
 type CreateField =
   | "leader"
@@ -198,7 +191,7 @@ function CreateForm({ db }: { db: MockDb }) {
               value={leaderId}
               placeholder={he.manager.select}
               missing={highlighted.has("leader")}
-              options={leaders.map((leader) => ({ value: leader.id, label: leader.fullName }))}
+              options={sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName })))}
               onValueChange={setLeaderId}
             />
           </EditorField>
@@ -215,7 +208,7 @@ function CreateForm({ db }: { db: MockDb }) {
               value={companyId}
               placeholder={he.manager.select}
               missing={highlighted.has("company")}
-              options={companies.map((company) => ({ value: company.id, label: company.name }))}
+              options={sortSelectOptions(companies.map((company) => ({ value: company.id, label: company.name })))}
               onValueChange={setCompanyId}
             />
           </EditorField>
@@ -224,7 +217,7 @@ function CreateForm({ db }: { db: MockDb }) {
               value={customerId}
               placeholder={he.manager.select}
               missing={highlighted.has("customer")}
-              options={customers.map((customer) => ({ value: customer.id, label: customer.name }))}
+              options={sortSelectOptions(customers.map((customer) => ({ value: customer.id, label: customer.name })))}
               onValueChange={setCustomerId}
             />
           </EditorField>
@@ -233,7 +226,7 @@ function CreateForm({ db }: { db: MockDb }) {
               value={siteId}
               placeholder={he.manager.select}
               missing={highlighted.has("site")}
-              options={sites.map((site) => ({ value: site.id, label: site.name }))}
+              options={sortSelectOptions(sites.map((site) => ({ value: site.id, label: site.name })))}
               onValueChange={setSiteId}
             />
           </EditorField>

@@ -168,7 +168,7 @@ function DiaryEditor({
       </div>
 
       {hideSubmit ? null : (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:right-60">
+        <div className="app-sticky-bar fixed inset-x-0 bottom-0 z-30 border-t border-border px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:right-60">
           <div className="mx-auto w-full max-w-xl lg:max-w-2xl">
             <Button type="button" size="touch" className="w-full" onClick={openReview}>
               {he.leader.form.submit}

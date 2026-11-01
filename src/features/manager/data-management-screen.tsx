@@ -10,7 +10,6 @@ import {
   MapPin,
   PenLine,
   Phone,
-  Power,
   Search,
   Trash,
   UserRound,
@@ -58,17 +57,15 @@ import {
   saveManagerCustomer,
   saveManagerSite,
   saveManagerTeamLeader,
-  setManagerCompanyActive,
-  setManagerCustomerActive,
-  setManagerSiteActive,
-  setManagerUserActive,
   useManagerDb,
 } from "@/data/browser-store"
+import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
 import { findCompany, findCustomer } from "@/data/lookups"
 import type { DeleteBlockedReason } from "@/data/manager"
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { he } from "@/i18n/he"
+import { sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
 type TabId = "companies" | "customers" | "sites" | "teamLeaders" | "managers"
@@ -83,7 +80,6 @@ type Editor =
       fullName: string
       identityNumber: string
       phone: string
-      companyId: string
     }
   | {
       kind: "manager"
@@ -91,16 +87,13 @@ type Editor =
       fullName: string
       identityNumber: string
       email: string
-      companyId: string
     }
 
 type TableRow = {
   id: string
   cells: string[]
-  isActive: boolean
   onEdit: () => void
   onDelete: () => void
-  onToggleActive: () => void
 }
 
 const tabs: Array<{ id: TabId; label: string }> = [
@@ -111,17 +104,8 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "managers", label: he.manager.organization.tabs.managers },
 ]
 
-const panelSurfaceClass =
-  "border-border/40 bg-white/92 shadow-lg backdrop-blur-xl dark:border-border/40 dark:bg-background/90"
-
-const panelSurfaceStyle = {
-  backgroundColor: "rgb(255 255 255 / 0.92)",
-  WebkitBackdropFilter: "blur(16px)",
-  backdropFilter: "blur(16px)",
-} as const
-
 const editorInputClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-muted px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-[#222228]"
 
 export function DataManagementScreen() {
   const query = useManagerDb()
@@ -150,23 +134,6 @@ export function DataManagementScreen() {
     sites: db.sites.length,
     teamLeaders: db.users.filter((user) => user.role === "teamLeader").length,
     managers: db.users.filter((user) => user.role === "manager").length,
-  }
-
-  const toggleActive = (kind: TabId, id: string, next: boolean) => {
-    const result =
-      kind === "companies"
-        ? setManagerCompanyActive(id, next)
-        : kind === "customers"
-          ? setManagerCustomerActive(id, next)
-          : kind === "sites"
-            ? setManagerSiteActive(id, next)
-            : setManagerUserActive(id, next)
-    if (!result.ok) {
-      const reason = "reason" in result ? result.reason : undefined
-      if (reason) toast(he.manager.organization.deleteBlocked[reason])
-      return false
-    }
-    return true
   }
 
   const chooseTab = (next: TabId) => {
@@ -214,24 +181,6 @@ export function DataManagementScreen() {
     setDeleteFlow(null)
     toast(he.manager.organization.delete)
   }
-
-  const runBlockedDeactivate = () => {
-    if (!deleteFlow || deleteFlow.step !== "blocked") return
-    if (!lookupIsActive(db, deleteFlow.kind, deleteFlow.id)) {
-      setDeleteFlow(null)
-      return
-    }
-    const ok = toggleActive(deleteFlow.kind, deleteFlow.id, false)
-    if (ok) {
-      toast(he.manager.organization.deactivate)
-      setDeleteFlow(null)
-    }
-  }
-
-  const canOfferDeactivate =
-    deleteFlow?.step === "blocked" &&
-    deleteFlow.reason === "has-diaries" &&
-    lookupIsActive(db, deleteFlow.kind, deleteFlow.id)
 
   return (
     <PageFrame>
@@ -283,7 +232,7 @@ export function DataManagementScreen() {
               <Input
                 value={search}
                 placeholder={he.manager.organization.search}
-                className="h-9 rounded-md border-border bg-white pe-3 ps-9 text-sm shadow-none md:text-sm"
+                className="h-9 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none md:text-sm"
                 onChange={(event) => setSearch(event.target.value)}
               />
             </div>
@@ -299,7 +248,6 @@ export function DataManagementScreen() {
               onDelete={(kind, id) => {
                 setDeleteFlow({ step: "confirm", kind, id })
               }}
-              onToggleActive={(kind, id, isActive) => toggleActive(kind, id, !isActive)}
             />
           </div>
 
@@ -321,18 +269,6 @@ export function DataManagementScreen() {
         }}
         onChange={setEditor}
         onSave={saveEdit}
-        onToggleActive={
-          editor?.id
-            ? () => {
-                const item = editor
-                if (!item.id) return
-                const kind = editorKindToTab(item.kind)
-                const active = lookupIsActive(db, kind, item.id)
-                toggleActive(kind, item.id, !active)
-              }
-            : undefined
-        }
-        isActive={editor?.id ? lookupIsActive(db, editorKindToTab(editor.kind), editor.id) : undefined}
       />
       <Dialog open={deleteFlow !== null} onOpenChange={(open) => { if (!open) setDeleteFlow(null) }}>
         <DialogContent className="rounded-md sm:max-w-md">
@@ -340,13 +276,8 @@ export function DataManagementScreen() {
             <>
               <DialogHeader>
                 <DialogTitle>{he.manager.organization.deleteBlockedTitle}</DialogTitle>
-                <DialogDescription className="space-y-2 text-start">
-                  <span className="block">{he.manager.organization.deleteBlocked[deleteFlow.reason]}</span>
-                  {canOfferDeactivate ? (
-                    <span className="block text-muted-foreground">
-                      {he.manager.organization.deleteBlockedDeactivateHint}
-                    </span>
-                  ) : null}
+                <DialogDescription className="text-start">
+                  {he.manager.organization.deleteBlocked[deleteFlow.reason]}
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter className="flex-row gap-2 sm:justify-stretch">
@@ -354,16 +285,11 @@ export function DataManagementScreen() {
                   type="button"
                   size="default"
                   variant="outline"
-                  className={cn("h-10", canOfferDeactivate ? "w-[30%]" : "w-full")}
+                  className="h-10 w-full"
                   onClick={() => setDeleteFlow(null)}
                 >
                   {he.manager.organization.deleteBlockedKeep}
                 </Button>
-                {canOfferDeactivate ? (
-                  <Button type="button" size="default" className="h-10 w-[70%]" onClick={runBlockedDeactivate}>
-                    {he.manager.organization.deactivate}
-                  </Button>
-                ) : null}
               </DialogFooter>
             </>
           ) : (
@@ -394,12 +320,21 @@ export function DataManagementScreen() {
   )
 }
 
-function statusLabel(isActive: boolean) {
-  return isActive ? he.manager.organization.active : he.manager.organization.inactive
+function columnWidths(columnCount: number): string[] {
+  if (columnCount <= 0) return []
+  if (columnCount === 5) return ["6%", "46%", "32%", "8%", "8%"]
+  if (columnCount === 6) return ["6%", "28%", "25%", "25%", "8%", "8%"]
+  const actionShare = 8
+  const indexShare = 6
+  const remaining = Math.max(0, 100 - indexShare - actionShare * 2)
+  const middleCount = Math.max(1, columnCount - 3)
+  const middleShare = remaining / middleCount
+  return Array.from({ length: columnCount }, (_, index) => {
+    if (index === 0) return `${indexShare}%`
+    if (index >= columnCount - 2) return `${actionShare}%`
+    return `${middleShare}%`
+  })
 }
-
-/** Stable desktop grid: # | שם | A | B | עריכה | מחיקה */
-const TABLE_COLUMN_WIDTHS = ["6%", "36%", "21%", "21%", "8%", "8%"] as const
 
 function countDiaries(db: MockDb, tab: TabId, id: string) {
   if (tab === "companies") return db.diaries.filter((diary) => diary.companyId === id).length
@@ -415,14 +350,12 @@ function EntityList({
   search,
   onEdit,
   onDelete,
-  onToggleActive,
 }: {
   db: MockDb
   tab: TabId
   search: string
   onEdit: (editor: Editor) => void
   onDelete: (kind: TabId, id: string) => void
-  onToggleActive: (kind: TabId, id: string, isActive: boolean) => void
 }) {
   const query = search.trim()
 
@@ -430,16 +363,9 @@ function EntityList({
     const items = db.companies.filter((item) => !query || item.name.includes(query))
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
-      cells: [
-        String(index + 1),
-        item.name,
-        statusLabel(item.isActive),
-        String(countDiaries(db, tab, item.id)),
-      ],
-      isActive: item.isActive,
+      cells: [String(index + 1), item.name, String(countDiaries(db, tab, item.id))],
       onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
       onDelete: () => onDelete(tab, item.id),
-      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
     }))
 
     return (
@@ -448,7 +374,6 @@ function EntityList({
         headers={[
           he.manager.organization.index,
           he.manager.organization.name,
-          he.manager.organization.status,
           he.manager.organization.diariesCount,
           he.manager.edit,
           he.manager.organization.delete,
@@ -462,17 +387,10 @@ function EntityList({
     const items = db.customers.filter((item) => !query || item.name.includes(query))
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
-      cells: [
-        String(index + 1),
-        item.name,
-        findCompany(db, item.companyId)?.name ?? "—",
-        statusLabel(item.isActive),
-      ],
-      isActive: item.isActive,
+      cells: [String(index + 1), item.name, findCompany(db, item.companyId)?.name ?? "—"],
       onEdit: () =>
         onEdit({ kind: "customer", id: item.id, name: item.name, companyId: item.companyId }),
       onDelete: () => onDelete(tab, item.id),
-      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
     }))
 
     return (
@@ -482,7 +400,6 @@ function EntityList({
           he.manager.organization.index,
           he.manager.organization.name,
           he.manager.organization.company,
-          he.manager.organization.status,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
@@ -495,17 +412,10 @@ function EntityList({
     const items = db.sites.filter((item) => !query || item.name.includes(query))
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
-      cells: [
-        String(index + 1),
-        item.name,
-        findCustomer(db, item.customerId)?.name ?? "—",
-        statusLabel(item.isActive),
-      ],
-      isActive: item.isActive,
+      cells: [String(index + 1), item.name, findCustomer(db, item.customerId)?.name ?? "—"],
       onEdit: () =>
         onEdit({ kind: "site", id: item.id, name: item.name, customerId: item.customerId }),
       onDelete: () => onDelete(tab, item.id),
-      onToggleActive: () => onToggleActive(tab, item.id, item.isActive),
     }))
 
     return (
@@ -515,7 +425,6 @@ function EntityList({
           he.manager.organization.index,
           he.manager.organization.name,
           he.manager.organization.customer,
-          he.manager.organization.status,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
@@ -539,10 +448,9 @@ function EntityList({
       cells: [
         String(index + 1),
         item.fullName,
-        findCompany(db, item.companyId)?.name ?? "—",
-        statusLabel(item.isActive),
+        item.identityNumber || "—",
+        item.phone || "—",
       ],
-      isActive: item.isActive,
       onEdit: () =>
         onEdit({
           kind: "teamLeader",
@@ -550,10 +458,8 @@ function EntityList({
           fullName: item.fullName,
           identityNumber: item.identityNumber,
           phone: item.phone ?? "",
-          companyId: item.companyId,
         }),
       onDelete: () => onDelete("teamLeaders", item.id),
-      onToggleActive: () => onToggleActive("teamLeaders", item.id, item.isActive),
     }))
 
     return (
@@ -561,9 +467,9 @@ function EntityList({
         empty={rows.length === 0}
         headers={[
           he.manager.organization.index,
-          he.manager.organization.name,
-          he.manager.teamLeaders.company,
-          he.manager.organization.status,
+          he.manager.teamLeaders.name,
+          he.manager.teamLeaders.identity,
+          he.manager.teamLeaders.phone,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
@@ -579,8 +485,7 @@ function EntityList({
   })
   const rows: TableRow[] = items.map((item, index) => ({
     id: item.id,
-    cells: [String(index + 1), item.fullName, item.email ?? "—", statusLabel(item.isActive)],
-    isActive: item.isActive,
+    cells: [String(index + 1), item.fullName, item.email ?? "—"],
     onEdit: () =>
       onEdit({
         kind: "manager",
@@ -588,10 +493,8 @@ function EntityList({
         fullName: item.fullName,
         identityNumber: item.identityNumber,
         email: item.email ?? "",
-        companyId: item.companyId,
       }),
     onDelete: () => onDelete("managers", item.id),
-    onToggleActive: () => onToggleActive("managers", item.id, item.isActive),
   }))
 
   return (
@@ -599,9 +502,8 @@ function EntityList({
       empty={rows.length === 0}
       headers={[
         he.manager.organization.index,
-        he.manager.organization.name,
+        he.manager.managers.name,
         he.manager.managers.email,
-        he.manager.organization.status,
         he.manager.edit,
         he.manager.organization.delete,
       ]}
@@ -647,7 +549,7 @@ function DataTable({
       <div className="hidden w-full overflow-hidden rounded-md border border-border bg-card lg:block">
         <table className="w-full table-fixed border-collapse text-[11px] leading-4">
           <colgroup>
-            {TABLE_COLUMN_WIDTHS.map((width, index) => (
+            {columnWidths(headers.length).map((width, index) => (
               <col key={index} style={{ width }} />
             ))}
           </colgroup>
@@ -695,19 +597,6 @@ function DataTable({
                       <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
                         <PenLine className="size-3.5" aria-hidden />
                       </RowIconButton>
-                      <RowIconButton
-                        label={
-                          row.isActive
-                            ? he.manager.organization.deactivate
-                            : he.manager.organization.activate
-                        }
-                        onClick={row.onToggleActive}
-                      >
-                        <Power
-                          className={cn("size-3.5", !row.isActive && "text-muted-foreground/60")}
-                          aria-hidden
-                        />
-                      </RowIconButton>
                     </div>
                   </td>
                   <td className="px-1 py-1 text-center align-middle">
@@ -741,17 +630,6 @@ function DataTable({
                 <div className="flex shrink-0 items-center gap-0.5">
                   <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
                     <PenLine className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                  <RowIconButton
-                    label={
-                      row.isActive ? he.manager.organization.deactivate : he.manager.organization.activate
-                    }
-                    onClick={row.onToggleActive}
-                  >
-                    <Power
-                      className={cn("size-3.5", !row.isActive && "text-muted-foreground/60")}
-                      aria-hidden
-                    />
                   </RowIconButton>
                   <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
                     <Trash className="size-3.5" aria-hidden />
@@ -803,8 +681,6 @@ function EditorPanel({
   onOpenChange,
   onChange,
   onSave,
-  onToggleActive,
-  isActive,
 }: {
   db: MockDb
   editor: Editor | null
@@ -812,8 +688,6 @@ function EditorPanel({
   onOpenChange: (open: boolean) => void
   onChange: (editor: Editor) => void
   onSave: () => void
-  onToggleActive?: () => void
-  isActive?: boolean
 }) {
   const desktop = useDesktop()
   const open = editor !== null
@@ -829,13 +703,6 @@ function EditorPanel({
         error={error}
         onChange={onChange}
         onSave={onSave}
-        footerExtra={
-          editor.id && onToggleActive ? (
-            <Button type="button" size="default" variant="outline" className="h-9 w-full" onClick={onToggleActive}>
-              {isActive ? he.manager.organization.deactivate : he.manager.organization.activate}
-            </Button>
-          ) : null
-        }
       />
     </div>
   ) : null
@@ -947,7 +814,9 @@ function OrgSelect({
 }
 
 function companyOptions(db: MockDb, allowEmpty: boolean) {
-  const options = db.companies.map((company) => ({ value: company.id, label: company.name }))
+  const options = sortSelectOptions(
+    db.companies.map((company) => ({ value: company.id, label: company.name }))
+  )
   if (allowEmpty) {
     return [{ value: "", label: "—" }, ...options]
   }
@@ -955,7 +824,9 @@ function companyOptions(db: MockDb, allowEmpty: boolean) {
 }
 
 function customerOptions(db: MockDb) {
-  return db.customers.map((customer) => ({ value: customer.id, label: customer.name }))
+  return sortSelectOptions(
+    db.customers.map((customer) => ({ value: customer.id, label: customer.name }))
+  )
 }
 
 function EditorForm({
@@ -964,14 +835,12 @@ function EditorForm({
   error,
   onChange,
   onSave,
-  footerExtra,
 }: {
   db: MockDb
   editor: Editor
   error: boolean
   onChange: (editor: Editor) => void
   onSave: () => void
-  footerExtra?: ReactNode
 }) {
   return (
     <>
@@ -1055,14 +924,6 @@ function EditorForm({
                   onChange={(event) => onChange({ ...editor, phone: event.target.value })}
                 />
               </EditorField>
-              <EditorField icon={Building2} label={he.manager.teamLeaders.company}>
-                <OrgSelect
-                  value={editor.companyId}
-                  placeholder={he.manager.teamLeaders.company}
-                  options={companyOptions(db, false)}
-                  onValueChange={(companyId) => onChange({ ...editor, companyId })}
-                />
-              </EditorField>
             </>
           ) : null}
           {editor.kind === "manager" ? (
@@ -1096,21 +957,12 @@ function EditorForm({
                   onChange={(event) => onChange({ ...editor, email: event.target.value })}
                 />
               </EditorField>
-              <EditorField icon={Building2} label={he.manager.managers.company}>
-                <OrgSelect
-                  value={editor.companyId}
-                  placeholder={he.manager.managers.company}
-                  options={companyOptions(db, true)}
-                  onValueChange={(companyId) => onChange({ ...editor, companyId })}
-                />
-              </EditorField>
             </>
           ) : null}
           {error ? <p className="text-xs text-muted-foreground">{he.manager.invalid}</p> : null}
         </div>
       </div>
       <div className="flex flex-col gap-2 border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {footerExtra}
         <Button type="button" size="default" className="h-9 w-full" onClick={onSave}>
           {he.manager.save}
         </Button>
@@ -1132,7 +984,6 @@ function createBlank(tab: TabId, db: MockDb | null): Editor {
       fullName: "",
       identityNumber: "",
       phone: "",
-      companyId: defaultCompanyId,
     }
   }
   return {
@@ -1141,7 +992,6 @@ function createBlank(tab: TabId, db: MockDb | null): Editor {
     fullName: "",
     identityNumber: "",
     email: "",
-    companyId: defaultCompanyId,
   }
 }
 
@@ -1158,30 +1008,15 @@ function persistEditor(editor: Editor) {
       fullName: editor.fullName,
       identityNumber: editor.identityNumber,
       phone: editor.phone,
-      companyId: editor.companyId,
+      companyId: "",
     })
   }
   return saveManagerAccount(editor.id, {
     fullName: editor.fullName,
     identityNumber: editor.identityNumber,
     email: editor.email,
-    companyId: editor.companyId,
+    companyId: "",
   })
-}
-
-function editorKindToTab(kind: Editor["kind"]): TabId {
-  if (kind === "company") return "companies"
-  if (kind === "customer") return "customers"
-  if (kind === "site") return "sites"
-  if (kind === "teamLeader") return "teamLeaders"
-  return "managers"
-}
-
-function lookupIsActive(db: MockDb, tab: TabId, id: string): boolean {
-  if (tab === "companies") return db.companies.find((item) => item.id === id)?.isActive ?? false
-  if (tab === "customers") return db.customers.find((item) => item.id === id)?.isActive ?? false
-  if (tab === "sites") return db.sites.find((item) => item.id === id)?.isActive ?? false
-  return db.users.find((user) => user.id === id)?.isActive ?? false
 }
 
 function persistDelete(kind: TabId, id: string) {

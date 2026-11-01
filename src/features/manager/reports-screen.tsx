@@ -77,7 +77,7 @@ import {
 import { cn } from "cn"
 
 const filterControlClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 
@@ -386,7 +386,7 @@ function ResultsToolbar({
     <div
       role="toolbar"
       aria-label={he.manager.reports.resultsTitle}
-      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-white"
+      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-card"
     >
       <ToolbarAction
         label={exporting ? "..." : he.manager.reports.exportPdf}
@@ -426,7 +426,7 @@ function ToolbarAction({
         "border-s border-border first:border-s-0",
         disabled
           ? "cursor-not-allowed text-muted-foreground/50"
-          : "bg-transparent text-foreground hover:bg-muted/70"
+          : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
       )}
       onClick={onClick}
     >

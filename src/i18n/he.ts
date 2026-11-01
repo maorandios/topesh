@@ -162,8 +162,6 @@ export const he = {
         manager: "הוספת מנהל",
       },
       search: "חיפוש",
-      deactivate: "השבתה",
-      activate: "הפעלה",
       delete: "מחיקה",
       deleteConfirm: "למחוק את הרשומה לצמיתות?",
       deleteAction: "מחיקה",
@@ -182,7 +180,6 @@ export const he = {
         "last-manager": "אי אפשר למחוק את המנהל האחרון.",
       },
       deleteBlockedTitle: "לא ניתן למחוק",
-      deleteBlockedDeactivateHint: "אפשר להשבית את הרשומה במקום מחיקה. רשומה מושבתת נשארת בהיסטוריה ולא תוצע לשיוך חדש.",
       deleteBlockedKeep: "סגירה",
     },
     catalog: {
@@ -295,8 +292,15 @@ export const he = {
     },
     settings: {
       title: "הגדרות",
-      body: "מסך ההגדרות מוכן לניווט. אפשרויות מערכת והעדפות ייבנו בשלב הבא.",
+      body: "התאימו את מראה האפליקציה לפי ההעדפה שלכם.",
+      appearance: "מראה",
+      appearanceHint: "בהיר בסגנון CERTIFY, כהה בסגנון VISION LAYER.",
     },
+  },
+  theme: {
+    label: "ערכת צבעים",
+    light: "בהיר",
+    dark: "כהה",
   },
   leader: {
     loading: "טוען יומנים",

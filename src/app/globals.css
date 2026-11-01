@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -48,40 +48,99 @@
 }
 
 :root {
-  --background: #f4f5f7;
-  --foreground: #1c2127;
+  /* CERTIFY palette (C:\CERTIFY\app\globals.css) */
+  --background: #fffdfb;
+  --foreground: #1c1917;
   --card: #ffffff;
-  --card-foreground: #1c2127;
+  --card-foreground: #1c1917;
   --popover: #ffffff;
-  --popover-foreground: #1c2127;
-  --primary: #1c2127;
-  --primary-foreground: #f7f8f9;
-  --secondary: #eceef1;
-  --secondary-foreground: #1c2127;
-  --muted: #eceef1;
-  --muted-foreground: #5c6770;
-  --accent: #e4e7eb;
-  --accent-foreground: #1c2127;
-  --destructive: #3a4046;
-  --border: #e2e5ea;
-  --input: #e2e5ea;
-  --ring: #8b949e;
-  --chart-1: #d5d8dd;
-  --chart-2: #8b949e;
-  --chart-3: #5c6770;
-  --chart-4: #3a4046;
-  --chart-5: #1c2127;
+  --popover-foreground: #1c1917;
+  --primary: #ff3300;
+  --primary-foreground: #ffffff;
+  --primary-hover: #e02e00;
+  --primary-soft: #ffe0d6;
+  --secondary: #f5f5f4;
+  --secondary-foreground: #1c1917;
+  --muted: #f5f5f4;
+  --muted-foreground: #57534e;
+  --accent: #f5f5f4;
+  --accent-foreground: #1c1917;
+  --destructive: #dc2626;
+  --border: #e7e5e4;
+  --input: #e7e5e4;
+  --ring: #ff3300;
+  --chart-1: #e7e5e4;
+  --chart-2: #57534e;
+  --chart-3: #2b2b2b;
+  --chart-4: #1c1917;
+  --chart-5: #ff3300;
   --radius: 0.75rem;
   --sidebar: #ffffff;
-  --sidebar-foreground: #1c2127;
-  --sidebar-primary: #1c2127;
-  --sidebar-primary-foreground: #f7f8f9;
-  --sidebar-accent: #eceef1;
-  --sidebar-accent-foreground: #1c2127;
-  --sidebar-border: #e2e5ea;
-  --sidebar-ring: #8b949e;
+  --sidebar-foreground: #1c1917;
+  --sidebar-primary: #ff3300;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f5f5f4;
+  --sidebar-accent-foreground: #1c1917;
+  --sidebar-border: #e7e5e4;
+  --sidebar-ring: #ff3300;
+  --charcoal: #2b2b2b;
+  --charcoal-foreground: #fffdfb;
+  --dark-surface: #2b2b2b;
+  --status-ok: #0f766e;
+  --status-ok-soft: #ccfbf1;
+  --status-warn: #d97706;
+  --status-warn-soft: #fef3c7;
+  --status-bad: #dc2626;
+  --status-bad-soft: #fee2e2;
   --duration-nav: 280ms;
   --ease-nav: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* VISION LAYER dark mode + brand orange #FF3300 */
+.dark {
+  color-scheme: dark;
+  --background: #050506;
+  --foreground: #f4ece0;
+  --card: #16161a;
+  --card-foreground: #f4ece0;
+  --popover: #1c1c21;
+  --popover-foreground: #f4ece0;
+  --primary: #ff3300;
+  --primary-foreground: #ffffff;
+  --primary-hover: #ff5522;
+  --primary-soft: rgb(255 51 0 / 0.18);
+  --secondary: #222228;
+  --secondary-foreground: #f4ece0;
+  --muted: #222228;
+  --muted-foreground: #b6bcc6;
+  --accent: #2a2a31;
+  --accent-foreground: #f4ece0;
+  --destructive: #c45a5a;
+  --border: rgb(255 255 255 / 0.16);
+  --input: rgb(255 255 255 / 0.2);
+  --ring: #ff3300;
+  --chart-1: #6e7480;
+  --chart-2: #a8aeb8;
+  --chart-3: #18181b;
+  --chart-4: #f4ece0;
+  --chart-5: #ff3300;
+  --sidebar: #0a0a0c;
+  --sidebar-foreground: #f4ece0;
+  --sidebar-primary: #ff3300;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2a31;
+  --sidebar-accent-foreground: #f4ece0;
+  --sidebar-border: rgb(255 255 255 / 0.16);
+  --sidebar-ring: #ff3300;
+  --charcoal: #1a1a1f;
+  --charcoal-foreground: #f4ece0;
+  --dark-surface: #16161a;
+  --status-ok: #3ecf8e;
+  --status-ok-soft: rgb(62 207 142 / 0.16);
+  --status-warn: #d4a017;
+  --status-warn-soft: rgb(212 160 23 / 0.16);
+  --status-bad: #c45a5a;
+  --status-bad-soft: rgb(196 90 90 / 0.16);
 }
 
 @layer base {
@@ -102,10 +161,35 @@
   }
 }
 
+/* Sticky / floating chrome: blur without changing geometry. */
+.app-chrome {
+  background-color: color-mix(in srgb, var(--background) 88%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+
+.app-sticky-bar {
+  background-color: color-mix(in srgb, var(--background) 90%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+}
+
+.dark .app-chrome {
+  background-color: rgb(22 22 24 / 0.52);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+}
+
+.dark .app-sticky-bar {
+  background-color: rgb(14 14 16 / 0.72);
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+}
+
 /* Keep outside @layer so it wins over UA scrollbar styles in panels/menus. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(28 33 39 / 0.16) transparent;
+  scrollbar-color: rgb(28 25 23 / 0.16) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -119,18 +203,18 @@
 }
 
 *::-webkit-scrollbar-thumb {
-  background-color: rgb(28 33 39 / 0.12);
+  background-color: rgb(28 25 23 / 0.12);
   border-radius: 999px;
   border: 1px solid transparent;
   background-clip: padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background-color: rgb(28 33 39 / 0.22);
+  background-color: rgb(28 25 23 / 0.22);
 }
 
 *::-webkit-scrollbar-thumb:active {
-  background-color: rgb(28 33 39 / 0.3);
+  background-color: rgb(28 25 23 / 0.3);
 }
 
 .bidi-isolate {
@@ -246,5 +330,21 @@ html:active-view-transition {
   ::view-transition-group(*) {
     animation-duration: 0s !important;
     animation-delay: 0s !important;
+  }
+}
+
+/* Desktop shell: no mobile-style page slide between routes. */
+@media (min-width: 1024px) {
+  ::view-transition-old(.nav-forward),
+  ::view-transition-new(.nav-forward),
+  ::view-transition-old(.nav-back),
+  ::view-transition-new(.nav-back),
+  ::view-transition-old(.nav-traverse),
+  ::view-transition-new(.nav-traverse),
+  :root[data-nav="back"]::view-transition-old(.nav-traverse),
+  :root[data-nav="back"]::view-transition-new(.nav-traverse),
+  :root[data-nav="forward"]::view-transition-old(.nav-traverse),
+  :root[data-nav="forward"]::view-transition-new(.nav-traverse) {
+    animation: none !important;
   }
 }

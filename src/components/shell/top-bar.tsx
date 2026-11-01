@@ -8,7 +8,7 @@ import { he } from "@/i18n/he"
 export function TopBar() {
   return (
     <header
-      className="app-chrome sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-border bg-card px-4 pt-[env(safe-area-inset-top)]"
+      className="app-chrome sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 pt-[env(safe-area-inset-top)]"
       style={{ viewTransitionName: "app-header" }}
     >
       <p className="inline-flex min-w-0 items-center gap-2 truncate text-sm font-semibold lg:hidden">

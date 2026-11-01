@@ -2,6 +2,7 @@ import type { DiaryStatus } from "@/domain/types"
 import { findCompany, findComponent, findCustomer, findDomain, findSite, findUser } from "@/data/lookups"
 import { getManagerDiary, listManagerDiaries, type ManagerDiarySummary } from "@/data/manager"
 import type { MockDb } from "@/data/seed"
+import { sortSelectOptions } from "@/lib/sort"
 
 export type ReportType = "workOrder" | "site" | "components" | "diaries"
 
@@ -120,27 +121,39 @@ export function buildReport(db: MockDb, type: ReportType, filters: ReportFilters
 }
 
 export function filterOptions(db: MockDb, filters: ReportFilters) {
-  const companies = db.companies.map((item) => ({ value: item.id, label: item.name }))
-  const customers = db.customers
-    .filter((item) => !filters.companyId || item.companyId === filters.companyId)
-    .map((item) => ({ value: item.id, label: item.name }))
-  const sites = db.sites
-    .filter((item) => {
-      if (filters.customerId) return item.customerId === filters.customerId
-      if (filters.companyId) {
-        const customer = findCustomer(db, item.customerId)
-        return customer?.companyId === filters.companyId
-      }
-      return true
-    })
-    .map((item) => ({ value: item.id, label: item.name }))
-  const leaders = db.users
-    .filter((user) => user.role === "teamLeader")
-    .map((user) => ({ value: user.id, label: user.fullName }))
-  const domains = db.domains.map((item) => ({ value: item.id, label: item.name }))
-  const components = db.components
-    .filter((item) => !filters.domainId || item.domainId === filters.domainId)
-    .map((item) => ({ value: item.id, label: item.name }))
+  const companies = sortSelectOptions(
+    db.companies.map((item) => ({ value: item.id, label: item.name }))
+  )
+  const customers = sortSelectOptions(
+    db.customers
+      .filter((item) => !filters.companyId || item.companyId === filters.companyId)
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
+  const sites = sortSelectOptions(
+    db.sites
+      .filter((item) => {
+        if (filters.customerId) return item.customerId === filters.customerId
+        if (filters.companyId) {
+          const customer = findCustomer(db, item.customerId)
+          return customer?.companyId === filters.companyId
+        }
+        return true
+      })
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
+  const leaders = sortSelectOptions(
+    db.users
+      .filter((user) => user.role === "teamLeader")
+      .map((user) => ({ value: user.id, label: user.fullName }))
+  )
+  const domains = sortSelectOptions(
+    db.domains.map((item) => ({ value: item.id, label: item.name }))
+  )
+  const components = sortSelectOptions(
+    db.components
+      .filter((item) => !filters.domainId || item.domainId === filters.domainId)
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
   const checkboxes = db.checkboxDefinitions
     .filter((item) => item.isActive)
     .sort((a, b) => a.sortOrder - b.sortOrder)

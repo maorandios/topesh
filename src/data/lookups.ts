@@ -1,14 +1,13 @@
 import type { MockDb } from "@/data/seed"
+import { sortByHebrewName } from "@/lib/sort"
 
 export function activeDomainsFrom(db: MockDb) {
-  return db.domains
-    .filter((domain) => domain.isActive)
-    .map((domain) => ({
-      ...domain,
-      components: db.components.filter(
-        (item) => item.domainId === domain.id && item.isActive
-      ),
-    }))
+  return sortByHebrewName(db.domains.filter((domain) => domain.isActive)).map((domain) => ({
+    ...domain,
+    components: sortByHebrewName(
+      db.components.filter((item) => item.domainId === domain.id && item.isActive)
+    ),
+  }))
 }
 
 export function findCompany(db: MockDb, id: string) {

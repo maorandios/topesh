@@ -749,7 +749,7 @@ export function saveTeamLeader(
   if (!fullName || phone.length < 7 || phone.length > 20 || !/^\d{5,9}$/.test(identityNumber)) {
     return null
   }
-  if (!db.companies.some((item) => item.id === companyId)) return null
+  if (companyId && !db.companies.some((item) => item.id === companyId)) return null
   if (db.users.some((user) => user.identityNumber === identityNumber && user.id !== id)) return null
   if (!id) {
     const nextId = crypto.randomUUID()

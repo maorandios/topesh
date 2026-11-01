@@ -82,7 +82,7 @@ export function PanelNoticeBanner({ className }: { className?: string }) {
       <div
         role="status"
         className={cn(
-          "animate-in fade-in slide-in-from-bottom-2 rounded-xl border bg-white px-4 py-3 text-center text-sm font-medium shadow-[0_-4px_24px_rgba(0,0,0,0.06)]",
+          "animate-in fade-in slide-in-from-bottom-2 rounded-xl border bg-card px-4 py-3 text-center text-sm font-medium shadow-[0_-4px_24px_rgba(0,0,0,0.06)]",
           notice.tone === "success" && "border-emerald-200 text-foreground",
           notice.tone === "error" && "border-red-200",
           notice.tone === "default" && "border-border/60 text-foreground"

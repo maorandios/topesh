@@ -36,12 +36,14 @@ export function RoleSwitcher() {
 
   const chooseManager = (userId: string) => {
     session.setManager(userId)
-    router.push("/manager", { transitionTypes: ["nav-forward"] })
+    const desktop = window.matchMedia("(min-width: 1024px)").matches
+    router.push("/manager", desktop ? undefined : { transitionTypes: ["nav-forward"] })
   }
 
   const chooseLeader = (userId: string) => {
     session.setTeamLeader(userId)
-    router.push("/leader", { transitionTypes: ["nav-forward"] })
+    const desktop = window.matchMedia("(min-width: 1024px)").matches
+    router.push("/leader", desktop ? undefined : { transitionTypes: ["nav-forward"] })
   }
 
   return (

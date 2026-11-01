@@ -28,17 +28,22 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const items = variant === "manager" ? managerPrimaryNav : leaderNav
   const menuItems = variant === "manager" ? managerNav : null
+  const showMenu = Boolean(menuItems) || devRoleSwitcherEnabled
   const menuActive =
     variant === "manager"
       ? managerNav.slice(managerPrimaryNav.length).some((item) => isNavActive(pathname, item.href))
       : false
-  const columns = menuItems ? "grid-cols-4" : "grid-cols-2"
+  const columns = showMenu
+    ? menuItems
+      ? "grid-cols-4"
+      : "grid-cols-3"
+    : "grid-cols-2"
 
   return (
     <>
       <nav
         className={cn(
-          "app-chrome fixed inset-x-0 bottom-0 z-40 border-t border-border bg-card pb-[env(safe-area-inset-bottom)] lg:hidden",
+          "app-chrome fixed inset-x-0 bottom-0 z-40 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden",
           keyboardOpen && "hidden"
         )}
         style={{ viewTransitionName: "app-bottom-nav" }}
@@ -61,7 +66,7 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
               </AppLink>
             )
           })}
-          {menuItems ? (
+          {showMenu ? (
             <button
               type="button"
               className={cn(
@@ -77,35 +82,39 @@ export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
         </div>
       </nav>
 
-      {menuItems ? (
+      {showMenu ? (
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
           <SheetContent side="right">
             <SheetHeader>
               <SheetTitle>{he.nav.menuTitle}</SheetTitle>
               <SheetDescription>{he.appName}</SheetDescription>
             </SheetHeader>
-            <nav className="flex flex-1 flex-col gap-1 px-4">
-              {menuItems.map((item) => {
-                const active = isNavActive(pathname, item.href)
-                const Icon = item.icon
-                return (
-                  <AppLink
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMenuOpen(false)}
-                    className={cn(
-                      "pressable flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm",
-                      active
-                        ? "bg-accent font-medium text-foreground"
-                        : "text-muted-foreground"
-                    )}
-                  >
-                    <Icon className="size-5 shrink-0" />
-                    <span>{item.label}</span>
-                  </AppLink>
-                )
-              })}
-            </nav>
+            {menuItems ? (
+              <nav className="flex flex-1 flex-col gap-1 px-4">
+                {menuItems.map((item) => {
+                  const active = isNavActive(pathname, item.href)
+                  const Icon = item.icon
+                  return (
+                    <AppLink
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      className={cn(
+                        "pressable flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm",
+                        active
+                          ? "bg-accent font-medium text-foreground"
+                          : "text-muted-foreground"
+                      )}
+                    >
+                      <Icon className="size-5 shrink-0" />
+                      <span>{item.label}</span>
+                    </AppLink>
+                  )
+                })}
+              </nav>
+            ) : (
+              <div className="flex-1" />
+            )}
             {devRoleSwitcherEnabled ? (
               <div className="mt-auto border-t border-border p-4">
                 <AppLink

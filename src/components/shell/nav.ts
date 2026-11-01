@@ -1,12 +1,12 @@
 import type { LucideIcon } from "lucide-react"
 import {
-  Building2,
+  CircuitBoard,
   ClipboardList,
   FileSpreadsheet,
+  GitCompare,
   History,
-  LayoutDashboard,
-  Boxes,
   Settings,
+  SquareKanbanPlus,
 } from "lucide-react"
 import { he } from "@/i18n/he"
 
@@ -23,19 +23,19 @@ export const managerNav: NavItem[] = [
     href: "/manager",
     label: he.nav.dashboard,
     shortLabel: he.nav.dashboardShort,
-    icon: LayoutDashboard,
+    icon: SquareKanbanPlus,
   },
   {
     href: "/manager/organization",
     label: he.nav.dataManagement,
     shortLabel: he.nav.dataManagementShort,
-    icon: Building2,
+    icon: GitCompare,
   },
   {
     href: "/manager/catalog",
     label: he.nav.catalog,
     shortLabel: he.nav.catalogShort,
-    icon: Boxes,
+    icon: CircuitBoard,
   },
   {
     href: "/manager/reports",

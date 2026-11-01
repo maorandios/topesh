@@ -14,11 +14,11 @@ export function SideNav({ variant }: { variant: "manager" | "leader" }) {
 
   return (
     <aside
-      className="app-chrome sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-e border-border bg-card lg:flex"
+      className="app-chrome sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-e border-border lg:flex"
       style={{ viewTransitionName: "app-sidebar" }}
     >
-      <div className="flex h-14 items-center gap-2 px-4 text-sm font-semibold">
-        <Flame className="size-5 shrink-0 text-foreground" aria-hidden />
+      <div className="flex h-14 items-center gap-2 px-4 text-[1.00625rem] font-semibold text-primary">
+        <Flame className="size-[1.222rem] shrink-0 text-primary" aria-hidden />
         <span className="truncate">{he.appName}</span>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3 pb-4">
@@ -30,20 +30,20 @@ export function SideNav({ variant }: { variant: "manager" | "leader" }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "pressable flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm",
+                "pressable flex min-h-11 items-center gap-3 rounded-xl px-3 text-[0.7875rem]",
                 active
                   ? "bg-accent font-medium text-foreground"
                   : "text-muted-foreground"
               )}
             >
-              <Icon className="size-5 shrink-0" />
+              <Icon className="size-[1.125rem] shrink-0" />
               <span className="truncate">{item.label}</span>
             </AppLink>
           )
         })}
       </nav>
       {devRoleSwitcherEnabled ? (
-        <div className="border-t border-border p-3">
+        <div className="mt-auto border-t border-border p-3">
           <AppLink
             href="/"
             direction="back"
@@ -59,6 +59,6 @@ export function SideNav({ variant }: { variant: "manager" | "leader" }) {
 
 export function SideNavFallback() {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 border-e border-border bg-card lg:block" />
+    <aside className="app-chrome sticky top-0 hidden h-dvh w-60 shrink-0 border-e border-border lg:block" />
   )
 }
