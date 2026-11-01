@@ -155,11 +155,11 @@ export function CatalogScreen() {
     if (!result.ok) {
       const reason = "reason" in result ? result.reason : "not-found"
       setBlockReason(reason)
-      toast(he.manager.catalog.deleteBlocked[reason])
+      toast.info(he.manager.catalog.deleteBlocked[reason])
       return
     }
     setBlockReason(null)
-    toast(he.manager.catalog.delete)
+    toast.info(he.manager.catalog.delete)
   }
 
   return (

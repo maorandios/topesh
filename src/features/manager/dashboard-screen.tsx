@@ -611,7 +611,7 @@ function FilterSegment({
 function duplicateNextDay(diary: ManagerDiarySummary) {
   const result = duplicateManagerDiary(diary.id)
   if (result.ok) toast.success(he.manager.created)
-  else toast(he.manager.invalid)
+  else toast.info(he.manager.invalid)
 }
 
 function isUpcomingWorkDate(workDate: string) {

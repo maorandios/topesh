@@ -20,7 +20,7 @@ export function Providers({ children }: { children: ReactNode }) {
             <NavigationDirection />
             {children}
             <InstallPrompt />
-            <Toaster position="top-center" />
+            <Toaster />
           </DevSessionProvider>
         </ThemeProvider>
       </MotionConfig>

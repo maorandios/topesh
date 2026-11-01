@@ -1,8 +1,16 @@
 "use client"
 
-import { createElement, useState, useSyncExternalStore, type ReactNode } from "react"
+import {
+  createElement,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
+  ArrowLeft,
   Building2,
   ChevronDown,
   IdCard,
@@ -65,7 +73,7 @@ import type { DeleteBlockedReason } from "@/data/manager"
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { he } from "@/i18n/he"
-import { sortSelectOptions } from "@/lib/sort"
+import { compareHebrew, sortByHebrewName, sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
 type TabId = "companies" | "customers" | "sites" | "teamLeaders" | "managers"
@@ -96,12 +104,22 @@ type TableRow = {
   onDelete: () => void
 }
 
-const tabs: Array<{ id: TabId; label: string }> = [
-  { id: "companies", label: he.manager.organization.tabs.companies },
-  { id: "customers", label: he.manager.organization.tabs.customers },
-  { id: "sites", label: he.manager.organization.tabs.sites },
-  { id: "teamLeaders", label: he.manager.organization.tabs.teamLeaders },
-  { id: "managers", label: he.manager.organization.tabs.managers },
+type OrgNavItem = {
+  id: string
+  kind: Editor["kind"]
+  name: string
+  meta: string
+  details: Array<{ label: string; value: string }>
+  onEdit: () => void
+  onDelete: () => void
+}
+
+const tabs: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
+  { id: "companies", label: he.manager.organization.tabs.companies, icon: Building2 },
+  { id: "customers", label: he.manager.organization.tabs.customers, icon: Users },
+  { id: "sites", label: he.manager.organization.tabs.sites, icon: MapPin },
+  { id: "teamLeaders", label: he.manager.organization.tabs.teamLeaders, icon: UserRound },
+  { id: "managers", label: he.manager.organization.tabs.managers, icon: IdCard },
 ]
 
 const editorInputClass =
@@ -123,28 +141,111 @@ export function DataManagementScreen() {
     | { step: "blocked"; kind: TabId; id: string; reason: DeleteBlockedReason }
     | null
   >(null)
+  const cardScrollerRef = useRef<HTMLDivElement>(null)
+  const syncingScrollRef = useRef(false)
+  const scrollEndTimerRef = useRef<number | null>(null)
+  const tabRef = useRef(tab)
 
-  if (query.status === "loading") return <LeaderLoading />
-  if (query.status === "error") return <LeaderStoreError />
-  const db = query.db
+  useEffect(() => {
+    tabRef.current = tab
+  }, [tab])
 
-  const counts: Record<TabId, number> = {
-    companies: db.companies.length,
-    customers: db.customers.length,
-    sites: db.sites.length,
-    teamLeaders: db.users.filter((user) => user.role === "teamLeader").length,
-    managers: db.users.filter((user) => user.role === "manager").length,
+  const cardEdgeInset = (scroller: HTMLElement) => {
+    const style = getComputedStyle(scroller)
+    return (
+      Number.parseFloat(style.scrollPaddingRight) ||
+      Number.parseFloat(style.paddingRight) ||
+      16
+    )
+  }
+
+  const alignCardToStart = (next: TabId, behavior: ScrollBehavior = "smooth") => {
+    const scroller = cardScrollerRef.current
+    if (!scroller) return
+    const card = scroller.querySelector<HTMLElement>(`[data-tab-id="${next}"]`)
+    if (!card) return
+    const scrollerRect = scroller.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    const inset = cardEdgeInset(scroller)
+    // Physical delta: move so the card's inline-start (right in RTL) meets the content start edge.
+    const delta = cardRect.right - (scrollerRect.right - inset)
+    if (Math.abs(delta) < 1) return
+    syncingScrollRef.current = true
+    scroller.scrollBy({ left: delta, behavior })
+    window.setTimeout(
+      () => {
+        syncingScrollRef.current = false
+      },
+      behavior === "smooth" ? 420 : 0
+    )
+  }
+
+  const closestTabFromScroll = (): TabId => {
+    const scroller = cardScrollerRef.current
+    if (!scroller) return tabRef.current
+    const scrollerRect = scroller.getBoundingClientRect()
+    const startEdge = scrollerRect.right - cardEdgeInset(scroller)
+    let closest: TabId = tabRef.current
+    let closestDistance = Number.POSITIVE_INFINITY
+    for (const item of tabs) {
+      const card = scroller.querySelector<HTMLElement>(`[data-tab-id="${item.id}"]`)
+      if (!card) continue
+      const rect = card.getBoundingClientRect()
+      const distance = Math.abs(rect.right - startEdge)
+      if (distance < closestDistance) {
+        closestDistance = distance
+        closest = item.id
+      }
+    }
+    return closest
   }
 
   const chooseTab = (next: TabId) => {
+    if (next === tabRef.current) return
+    tabRef.current = next
     setTab(next)
     setSearch("")
-    setCreate(createBlank(next, db))
+    setCreate(createBlank(next, query.status === "ready" ? query.db : null))
     setCreateError(false)
     setEditor(null)
     setEditError(false)
     router.replace(`/manager/organization?tab=${next}`, { scroll: false })
   }
+
+  const syncTabFromScroll = () => {
+    if (syncingScrollRef.current) return
+    const closest = closestTabFromScroll()
+    if (closest !== tabRef.current) chooseTab(closest)
+  }
+
+  const onCardScroll = () => {
+    if (syncingScrollRef.current) return
+    if (scrollEndTimerRef.current !== null) window.clearTimeout(scrollEndTimerRef.current)
+    scrollEndTimerRef.current = window.setTimeout(() => {
+      scrollEndTimerRef.current = null
+      syncTabFromScroll()
+    }, 60)
+  }
+
+  useEffect(() => {
+    if (query.status !== "ready") return
+    // Initial align only — do not re-scroll on every tab change (that fights RTL drag).
+    const frame = window.requestAnimationFrame(() => {
+      const scroller = cardScrollerRef.current
+      const card = scroller?.querySelector<HTMLElement>(`[data-tab-id="${tabRef.current}"]`)
+      if (!scroller || !card) return
+      const scrollerRect = scroller.getBoundingClientRect()
+      const cardRect = card.getBoundingClientRect()
+      const inset = cardEdgeInset(scroller)
+      const delta = cardRect.right - (scrollerRect.right - inset)
+      if (Math.abs(delta) >= 1) scroller.scrollBy({ left: delta, behavior: "instant" })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [query.status])
+
+  if (query.status === "loading") return <LeaderLoading />
+  if (query.status === "error") return <LeaderStoreError />
+  const db = query.db
 
   const saveCreate = () => {
     const result = persistEditor(create)
@@ -179,43 +280,54 @@ export function DataManagementScreen() {
       return
     }
     setDeleteFlow(null)
-    toast(he.manager.organization.delete)
+    toast.info(he.manager.organization.delete)
   }
 
   return (
     <PageFrame>
       <div className="flex w-full flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div
+          ref={cardScrollerRef}
+          role="tablist"
+          aria-label={he.manager.organization.title}
+          dir="ltr"
+          className="-mx-4 snap-x snap-mandatory scroll-px-4 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] lg:mx-0 lg:snap-none lg:scroll-px-0 lg:overflow-visible lg:pb-0 [&::-webkit-scrollbar]:hidden"
+          onScroll={onCardScroll}
+        >
           <div
-            role="tablist"
-            aria-label={he.manager.organization.title}
-            className="inline-flex min-w-full gap-1 sm:min-w-0"
+            dir="rtl"
+            className="flex w-max gap-3 px-4 lg:grid lg:w-full lg:grid-cols-5 lg:gap-3 lg:px-0"
           >
             {tabs.map((item) => {
               const selected = tab === item.id
+              const Icon = item.icon
               return (
                 <button
                   key={item.id}
                   type="button"
                   role="tab"
+                  data-tab-id={item.id}
                   aria-selected={selected}
                   className={cn(
-                    "pressable inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-colors",
+                    "pressable flex aspect-square w-[6.75rem] shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors lg:aspect-auto lg:w-auto lg:min-h-[7.5rem] lg:snap-align-none",
                     selected
-                      ? "border-foreground bg-muted font-medium text-foreground"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                      ? "border-primary bg-primary/10 text-foreground shadow-[0_0_0_1px_rgb(255_51_0_/0.25)]"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"
                   )}
-                  onClick={() => chooseTab(item.id)}
+                  onClick={() => {
+                    chooseTab(item.id)
+                    alignCardToStart(item.id)
+                  }}
                 >
-                  <span>{item.label}</span>
                   <span
                     className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[11px] tabular-nums",
-                      selected ? "bg-background text-foreground" : "bg-muted text-muted-foreground"
+                      "inline-flex size-9 items-center justify-center rounded-full",
+                      selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                     )}
                   >
-                    {counts[item.id]}
+                    <Icon className="size-4" aria-hidden />
                   </span>
+                  <span className="text-sm font-medium leading-tight">{item.label}</span>
                 </button>
               )
             })}
@@ -252,6 +364,7 @@ export function DataManagementScreen() {
           </div>
 
           <CreateCard
+            key={create.kind}
             db={db}
             create={create}
             error={createError}
@@ -360,31 +473,54 @@ function EntityList({
   const query = search.trim()
 
   if (tab === "companies") {
-    const items = db.companies.filter((item) => !query || item.name.includes(query))
+    const items = sortByHebrewName(
+      db.companies.filter((item) => !query || item.name.includes(query))
+    )
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
       cells: [String(index + 1), item.name, String(countDiaries(db, tab, item.id))],
       onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
       onDelete: () => onDelete(tab, item.id),
     }))
+    const navItems: OrgNavItem[] = items.map((item) => {
+      const diariesCount = countDiaries(db, tab, item.id)
+      return {
+        id: item.id,
+        kind: "company",
+        name: item.name,
+        meta: String(diariesCount),
+        details: [
+          { label: he.manager.organization.name, value: item.name },
+          { label: he.manager.organization.diariesCount, value: String(diariesCount) },
+        ],
+        onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
+        onDelete: () => onDelete(tab, item.id),
+      }
+    })
 
     return (
-      <DataTable
-        empty={rows.length === 0}
-        headers={[
-          he.manager.organization.index,
-          he.manager.organization.name,
-          he.manager.organization.diariesCount,
-          he.manager.edit,
-          he.manager.organization.delete,
-        ]}
-        rows={rows}
-      />
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.organization.index,
+            he.manager.organization.name,
+            he.manager.organization.diariesCount,
+            he.manager.edit,
+            he.manager.organization.delete,
+          ]}
+          rows={rows}
+        />
+        <OrgNavList empty={navItems.length === 0} items={navItems} />
+      </>
     )
   }
 
   if (tab === "customers") {
-    const items = db.customers.filter((item) => !query || item.name.includes(query))
+    const items = sortByHebrewName(
+      db.customers.filter((item) => !query || item.name.includes(query))
+    )
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
       cells: [String(index + 1), item.name, findCompany(db, item.companyId)?.name ?? "—"],
@@ -392,24 +528,48 @@ function EntityList({
         onEdit({ kind: "customer", id: item.id, name: item.name, companyId: item.companyId }),
       onDelete: () => onDelete(tab, item.id),
     }))
+    const navItems: OrgNavItem[] = items.map((item) => {
+      const diariesCount = countDiaries(db, tab, item.id)
+      const companyName = findCompany(db, item.companyId)?.name ?? "—"
+      return {
+        id: item.id,
+        kind: "customer",
+        name: item.name,
+        meta: String(diariesCount),
+        details: [
+          { label: he.manager.organization.name, value: item.name },
+          { label: he.manager.organization.company, value: companyName },
+          { label: he.manager.organization.diariesCount, value: String(diariesCount) },
+        ],
+        onEdit: () =>
+          onEdit({ kind: "customer", id: item.id, name: item.name, companyId: item.companyId }),
+        onDelete: () => onDelete(tab, item.id),
+      }
+    })
 
     return (
-      <DataTable
-        empty={rows.length === 0}
-        headers={[
-          he.manager.organization.index,
-          he.manager.organization.name,
-          he.manager.organization.company,
-          he.manager.edit,
-          he.manager.organization.delete,
-        ]}
-        rows={rows}
-      />
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.organization.index,
+            he.manager.organization.name,
+            he.manager.organization.company,
+            he.manager.edit,
+            he.manager.organization.delete,
+          ]}
+          rows={rows}
+        />
+        <OrgNavList empty={navItems.length === 0} items={navItems} />
+      </>
     )
   }
 
   if (tab === "sites") {
-    const items = db.sites.filter((item) => !query || item.name.includes(query))
+    const items = sortByHebrewName(
+      db.sites.filter((item) => !query || item.name.includes(query))
+    )
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
       cells: [String(index + 1), item.name, findCustomer(db, item.customerId)?.name ?? "—"],
@@ -417,32 +577,57 @@ function EntityList({
         onEdit({ kind: "site", id: item.id, name: item.name, customerId: item.customerId }),
       onDelete: () => onDelete(tab, item.id),
     }))
+    const navItems: OrgNavItem[] = items.map((item) => {
+      const diariesCount = countDiaries(db, tab, item.id)
+      const customerName = findCustomer(db, item.customerId)?.name ?? "—"
+      return {
+        id: item.id,
+        kind: "site",
+        name: item.name,
+        meta: String(diariesCount),
+        details: [
+          { label: he.manager.organization.name, value: item.name },
+          { label: he.manager.organization.customer, value: customerName },
+          { label: he.manager.organization.diariesCount, value: String(diariesCount) },
+        ],
+        onEdit: () =>
+          onEdit({ kind: "site", id: item.id, name: item.name, customerId: item.customerId }),
+        onDelete: () => onDelete(tab, item.id),
+      }
+    })
 
     return (
-      <DataTable
-        empty={rows.length === 0}
-        headers={[
-          he.manager.organization.index,
-          he.manager.organization.name,
-          he.manager.organization.customer,
-          he.manager.edit,
-          he.manager.organization.delete,
-        ]}
-        rows={rows}
-      />
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.organization.index,
+            he.manager.organization.name,
+            he.manager.organization.customer,
+            he.manager.edit,
+            he.manager.organization.delete,
+          ]}
+          rows={rows}
+        />
+        <OrgNavList empty={navItems.length === 0} items={navItems} />
+      </>
     )
   }
 
   if (tab === "teamLeaders") {
-    const items = db.users.filter((user) => {
-      if (user.role !== "teamLeader") return false
-      if (!query) return true
-      return (
-        user.fullName.includes(query) ||
-        user.identityNumber.includes(query) ||
-        (user.phone ?? "").includes(query)
-      )
-    })
+    const items = db.users
+      .filter((user) => {
+        if (user.role !== "teamLeader") return false
+        if (!query) return true
+        return (
+          user.fullName.includes(query) ||
+          user.identityNumber.includes(query) ||
+          (user.phone ?? "").includes(query)
+        )
+      })
+      .slice()
+      .sort((a, b) => compareHebrew(a.fullName, b.fullName))
     const rows: TableRow[] = items.map((item, index) => ({
       id: item.id,
       cells: [
@@ -461,28 +646,60 @@ function EntityList({
         }),
       onDelete: () => onDelete("teamLeaders", item.id),
     }))
+    const navItems: OrgNavItem[] = items.map((item) => {
+      const phone = item.phone || "—"
+      const diariesCount = countDiaries(db, "teamLeaders", item.id)
+      return {
+        id: item.id,
+        kind: "teamLeader",
+        name: item.fullName,
+        meta: phone,
+        details: [
+          { label: he.manager.teamLeaders.name, value: item.fullName },
+          { label: he.manager.teamLeaders.identity, value: item.identityNumber || "—" },
+          { label: he.manager.teamLeaders.phone, value: phone },
+          { label: he.manager.organization.diariesCount, value: String(diariesCount) },
+        ],
+        onEdit: () =>
+          onEdit({
+            kind: "teamLeader",
+            id: item.id,
+            fullName: item.fullName,
+            identityNumber: item.identityNumber,
+            phone: item.phone ?? "",
+          }),
+        onDelete: () => onDelete("teamLeaders", item.id),
+      }
+    })
 
     return (
-      <DataTable
-        empty={rows.length === 0}
-        headers={[
-          he.manager.organization.index,
-          he.manager.teamLeaders.name,
-          he.manager.teamLeaders.identity,
-          he.manager.teamLeaders.phone,
-          he.manager.edit,
-          he.manager.organization.delete,
-        ]}
-        rows={rows}
-      />
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.organization.index,
+            he.manager.teamLeaders.name,
+            he.manager.teamLeaders.identity,
+            he.manager.teamLeaders.phone,
+            he.manager.edit,
+            he.manager.organization.delete,
+          ]}
+          rows={rows}
+        />
+        <OrgNavList empty={navItems.length === 0} items={navItems} />
+      </>
     )
   }
 
-  const items = db.users.filter((user) => {
-    if (user.role !== "manager") return false
-    if (!query) return true
-    return user.fullName.includes(query) || (user.email ?? "").includes(query)
-  })
+  const items = db.users
+    .filter((user) => {
+      if (user.role !== "manager") return false
+      if (!query) return true
+      return user.fullName.includes(query) || (user.email ?? "").includes(query)
+    })
+    .slice()
+    .sort((a, b) => compareHebrew(a.fullName, b.fullName))
   const rows: TableRow[] = items.map((item, index) => ({
     id: item.id,
     cells: [String(index + 1), item.fullName, item.email ?? "—"],
@@ -496,19 +713,46 @@ function EntityList({
       }),
     onDelete: () => onDelete("managers", item.id),
   }))
+  const navItems: OrgNavItem[] = items.map((item) => {
+    const email = item.email || "—"
+    return {
+      id: item.id,
+      kind: "manager",
+      name: item.fullName,
+      meta: email,
+      details: [
+        { label: he.manager.managers.name, value: item.fullName },
+        { label: he.manager.managers.identity, value: item.identityNumber || "—" },
+        { label: he.manager.managers.email, value: email },
+      ],
+      onEdit: () =>
+        onEdit({
+          kind: "manager",
+          id: item.id,
+          fullName: item.fullName,
+          identityNumber: item.identityNumber,
+          email: item.email ?? "",
+        }),
+      onDelete: () => onDelete("managers", item.id),
+    }
+  })
 
   return (
-    <DataTable
-      empty={rows.length === 0}
-      headers={[
-        he.manager.organization.index,
-        he.manager.managers.name,
-        he.manager.managers.email,
-        he.manager.edit,
-        he.manager.organization.delete,
-      ]}
-      rows={rows}
-    />
+    <>
+      <DataTable
+        empty={rows.length === 0}
+        mobile={false}
+        headers={[
+          he.manager.organization.index,
+          he.manager.managers.name,
+          he.manager.managers.email,
+          he.manager.edit,
+          he.manager.organization.delete,
+        ]}
+        rows={rows}
+      />
+      <OrgNavList empty={navItems.length === 0} items={navItems} />
+    </>
   )
 }
 
@@ -539,10 +783,12 @@ function DataTable({
   empty,
   headers,
   rows,
+  mobile = true,
 }: {
   empty: boolean
   headers: string[]
   rows: TableRow[]
+  mobile?: boolean
 }) {
   return (
     <>
@@ -611,35 +857,146 @@ function DataTable({
         </table>
       </div>
 
+      {mobile ? (
+        <ul className="w-full overflow-hidden rounded-md border border-border bg-card lg:hidden">
+          {empty ? (
+            <li className="px-3 py-8 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
+          ) : (
+            rows.map((row) => (
+              <li key={row.id} className="border-b border-border px-3 py-[calc(0.75rem*1.15*1.15)] last:border-b-0">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium break-words">
+                      <span className="me-2 text-muted-foreground tabular-nums">{row.cells[0]}.</span>
+                      {row.cells[1]}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground break-words">
+                      {row.cells.slice(2).filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                      <PenLine className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                    <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
+                      <Trash className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </div>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </>
+  )
+}
+
+function OrgNavList({ empty, items }: { empty: boolean; items: OrgNavItem[] }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = items.find((item) => item.id === selectedId) ?? null
+
+  return (
+    <>
       <ul className="w-full overflow-hidden rounded-md border border-border bg-card lg:hidden">
         {empty ? (
           <li className="px-3 py-8 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
         ) : (
-          rows.map((row) => (
-            <li key={row.id} className="border-b border-border px-3 py-3 last:border-b-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium break-words">
-                    <span className="me-2 text-muted-foreground tabular-nums">{row.cells[0]}.</span>
-                    {row.cells[1]}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground break-words">
-                    {row.cells.slice(2).filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
-                    <PenLine className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                  <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
-                    <Trash className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                </div>
-              </div>
+          items.map((item) => (
+            <li key={item.id} className="border-b border-border last:border-b-0">
+              <button
+                type="button"
+                className="pressable flex w-full items-center gap-3 px-3 py-[calc(0.75rem*1.15*1.15)] text-start"
+                onClick={() => setSelectedId(item.id)}
+              >
+                <p className="min-w-0 flex-1 text-sm font-medium break-words">
+                  <span>{item.name}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  <span className="tabular-nums text-muted-foreground" dir="ltr">
+                    {item.meta}
+                  </span>
+                </p>
+                <ArrowLeft className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
             </li>
           ))
         )}
       </ul>
+
+      <Drawer
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedId(null)
+        }}
+        showSwipeHandle
+        swipeDirection="down"
+      >
+        <DrawerContent
+          className={cn("min-h-[min(52dvh,28rem)] overflow-hidden", panelSurfaceClass)}
+          style={panelSurfaceStyle}
+        >
+          <DrawerHeader className="gap-1 pb-2 text-start md:text-start">
+            <DrawerTitle className="flex items-center justify-start gap-2 text-start">
+              {selected
+                ? createElement(editorIcon(selected.kind), {
+                    className: "size-4 shrink-0 text-muted-foreground",
+                    "aria-hidden": true,
+                  })
+                : null}
+              <span className="min-w-0 truncate">{selected?.name ?? ""}</span>
+            </DrawerTitle>
+          </DrawerHeader>
+          {selected ? (
+            <div className="flex flex-1 flex-col gap-5 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-1">
+              <dl className="flex flex-col gap-0 overflow-hidden rounded-xl border border-border bg-muted/25">
+                {selected.details.map((detail, index) => (
+                  <div
+                    key={detail.label}
+                    className={cn(
+                      "flex flex-col gap-1.5 px-4 py-3.5",
+                      index < selected.details.length - 1 && "border-b border-border/70"
+                    )}
+                  >
+                    <dt className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                      {detail.label}
+                    </dt>
+                    <dd className="text-base font-semibold leading-snug text-foreground break-words">
+                      {detail.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-auto flex flex-row gap-2">
+                <Button
+                  type="button"
+                  size="default"
+                  className="h-11 w-[70%]"
+                  onClick={() => {
+                    const item = selected
+                    setSelectedId(null)
+                    item.onEdit()
+                  }}
+                >
+                  {he.manager.edit}
+                </Button>
+                <Button
+                  type="button"
+                  size="default"
+                  variant="outline"
+                  className="h-11 w-[30%]"
+                  onClick={() => {
+                    const item = selected
+                    setSelectedId(null)
+                    item.onDelete()
+                  }}
+                >
+                  {he.manager.organization.delete}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
     </>
   )
 }
@@ -648,6 +1005,7 @@ function editorIcon(kind: Editor["kind"]): LucideIcon {
   if (kind === "company") return Building2
   if (kind === "customer") return Users
   if (kind === "site") return MapPin
+  if (kind === "manager") return IdCard
   return UserRound
 }
 
@@ -664,12 +1022,57 @@ function CreateCard({
   onChange: (editor: Editor) => void
   onSave: () => void
 }) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0 lg:min-h-[12rem]">
-      <div className="shrink-0 border-b border-border/70 px-4 py-3">
-        <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
+    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0">
+      <button
+        type="button"
+        className={cn(
+          "pressable flex w-full items-center gap-2 px-4 py-3 text-start transition-[border-color] duration-300",
+          open ? "border-b border-border/70" : "border-b border-transparent"
+        )}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <div className="min-w-0 flex-1">
+          <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
+        </div>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+            open && "rotate-180"
+          )}
+          aria-hidden
+        />
+      </button>
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div
+          className={cn("min-h-0 overflow-hidden", !open && "pointer-events-none")}
+          aria-hidden={!open}
+          inert={open ? undefined : true}
+        >
+          <div
+            className={cn(
+              "transition-[opacity,transform] duration-300 ease-out",
+              open ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+            )}
+          >
+            <EditorForm
+              db={db}
+              editor={create}
+              error={error}
+              onChange={onChange}
+              onSave={onSave}
+            />
+          </div>
+        </div>
       </div>
-      <EditorForm db={db} editor={create} error={error} onChange={onChange} onSave={onSave} />
     </section>
   )
 }

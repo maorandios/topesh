@@ -74,6 +74,8 @@ export const he = {
       exportPdf: "ייצוא PDF",
       exportPdfDone: "קובץ ה־PDF הורד.",
       exportPdfFailed: "ייצוא ה־PDF נכשל.",
+      duplicateDiary: "שכפול יומן",
+      duplicateFailed: "שכפול היומן נכשל.",
     },
     toList: "לרשימת היומנים",
     openDiary: "פתיחת היומן",

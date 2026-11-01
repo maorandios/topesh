@@ -99,7 +99,7 @@ export function usePanelNotice(): PanelNoticeApi {
   const ctx = useContext(PanelNoticeContext)
   if (ctx) return ctx
   return {
-    show: (message) => sonnerToast(message),
+    show: (message) => sonnerToast.info(message),
     success: (message) => sonnerToast.success(message),
     error: (message) => sonnerToast.error(message),
     notice: null,

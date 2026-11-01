@@ -205,7 +205,7 @@ function ReportsReady({ db }: { db: MockDb }) {
 
   const openExportModal = () => {
     if (selectedDiaries.length === 0) {
-      toast(he.manager.reports.exportNeedSelection)
+      toast.info(he.manager.reports.exportNeedSelection)
       return
     }
     setExportMode("list")
@@ -214,7 +214,7 @@ function ReportsReady({ db }: { db: MockDb }) {
 
   const runExport = async () => {
     if (selectedDiaries.length === 0) {
-      toast(he.manager.reports.exportNeedSelection)
+      toast.info(he.manager.reports.exportNeedSelection)
       return
     }
     const mode = exportMode
@@ -230,7 +230,7 @@ function ReportsReady({ db }: { db: MockDb }) {
           .map((summary) => getManagerDiary(db, summary.id))
           .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail))
         if (details.length === 0) {
-          toast(he.manager.reports.exportNeedSelection)
+          toast.info(he.manager.reports.exportNeedSelection)
           return
         }
         if (details.length === 1) await exportDiaryPdf(details[0]!)

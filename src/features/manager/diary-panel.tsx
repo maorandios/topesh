@@ -13,6 +13,7 @@ import {
   Cable,
   CheckCircle2,
   FileText,
+  Files,
   FolderKanban,
   Info,
   Layers3,
@@ -28,6 +29,8 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
 import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
@@ -55,6 +58,7 @@ import {
 } from "@/components/ui/sheet"
 import {
   deleteManagerDiary,
+  duplicateManagerDiary,
   editManagerDiary,
   markManagerDiaryCancelled,
   markManagerDiarySubmitted,
@@ -250,6 +254,8 @@ function DiaryBody({
   onClose: () => void
 }) {
   const notice = usePanelNotice()
+  const router = useRouter()
+  const desktop = useDesktop()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<PanelDraft | null>(null)
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null)
@@ -370,6 +376,24 @@ function DiaryBody({
           >
             <MenuRow icon={FileText} label={he.manager.panel.exportPdf} />
           </DropdownMenuItem>
+          {!desktop ? (
+            <DropdownMenuItem
+              className="rounded-md px-3 py-2.5"
+              label={he.manager.panel.duplicateDiary}
+              onClick={() => {
+                const result = duplicateManagerDiary(diary.id)
+                if (!result.ok) {
+                  toast.error(he.manager.panel.duplicateFailed)
+                  return
+                }
+                toast.success(he.manager.created)
+                onClose()
+                router.push("/manager")
+              }}
+            >
+              <MenuRow icon={Files} label={he.manager.panel.duplicateDiary} />
+            </DropdownMenuItem>
+          ) : null}
           {diary.status === "pending" ? (
             <DropdownMenuItem
               className="rounded-md px-3 py-2.5"
