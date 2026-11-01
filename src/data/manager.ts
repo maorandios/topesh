@@ -27,6 +27,7 @@ export type ManagerDiarySummary = DiaryAssignmentInput & {
   createdAt: string
   submittedAt: string | null
   cancelledAt: string | null
+  duplicatedFromId: string | null
 }
 
 export type ManagerDiaryDetail = ManagerDiarySummary & {
@@ -334,7 +335,8 @@ export function recentDiaries(db: MockDb, limit = 5): ManagerDiarySummary[] {
 export function assignDiary(
   db: MockDb,
   input: DiaryAssignmentInput,
-  createdAt: string
+  createdAt: string,
+  options?: { duplicatedFromId?: string | null }
 ): { db: MockDb; id: string } | null {
   const assignment = cleanAssignment(db, input)
   if (!assignment) return null
@@ -352,6 +354,7 @@ export function assignDiary(
           createdAt,
           submittedAt: null,
           cancelledAt: null,
+          duplicatedFromId: options?.duplicatedFromId ?? null,
         },
         ...db.diaries,
       ],
@@ -517,7 +520,8 @@ export function duplicateDiary(
       projectName: current.projectName,
       workOrderNumber: current.workOrderNumber,
     },
-    createdAt
+    createdAt,
+    { duplicatedFromId: current.id }
   )
 }
 
@@ -891,6 +895,7 @@ function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySu
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
     cancelledAt: diary.cancelledAt,
+    duplicatedFromId: diary.duplicatedFromId ?? null,
   }
 }
 

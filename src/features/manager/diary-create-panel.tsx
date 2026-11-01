@@ -70,7 +70,7 @@ export function DiaryCreatePanel({
   const title = he.manager.panel.createDiary
   const body = open ? (
     <PanelNoticeProvider>
-      <CreateForm key={String(open)} db={db} />
+      <CreateForm key={String(open)} db={db} onCreated={() => onOpenChange(false)} />
     </PanelNoticeProvider>
   ) : null
   if (desktop) {
@@ -102,7 +102,13 @@ export function DiaryCreatePanel({
   )
 }
 
-function CreateForm({ db }: { db: MockDb }) {
+function CreateForm({
+  db,
+  onCreated,
+}: {
+  db: MockDb
+  onCreated?: () => void
+}) {
   const notice = usePanelNotice()
   const leaders = db.users.filter((user) => user.role === "teamLeader" && user.isActive)
   const companies = db.companies.filter((item) => item.isActive)
@@ -172,6 +178,10 @@ function CreateForm({ db }: { db: MockDb }) {
     setProjectName("")
     setWorkDate(jerusalemToday())
     notice.success(he.manager.created)
+    if (onCreated) {
+      onCreated()
+      return
+    }
     orderRef.current?.focus()
   }
 

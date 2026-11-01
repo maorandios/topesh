@@ -17,7 +17,7 @@ export type NavItem = {
   icon: LucideIcon
 }
 
-/** Manager primary navigation. */
+/** Manager primary navigation (desktop SideNav). */
 export const managerNav: NavItem[] = [
   {
     href: "/manager",
@@ -51,7 +51,35 @@ export const managerNav: NavItem[] = [
   },
 ]
 
-/** Bottom bar shows the first three items + overflow menu with all five. */
+/** Mobile bottom bar destinations excluding the center Create action. */
+export const managerMobileNav: NavItem[] = [
+  {
+    href: "/manager",
+    label: he.nav.dashboard,
+    shortLabel: he.nav.homeShort,
+    icon: SquareKanbanPlus,
+  },
+  {
+    href: "/manager/organization",
+    label: he.nav.dataManagement,
+    shortLabel: he.nav.dataManagementShort,
+    icon: GitCompare,
+  },
+  {
+    href: "/manager/catalog",
+    label: he.nav.catalog,
+    shortLabel: he.nav.catalogShort,
+    icon: CircuitBoard,
+  },
+  {
+    href: "/manager/reports",
+    label: he.nav.reports,
+    shortLabel: he.nav.reports,
+    icon: FileSpreadsheet,
+  },
+]
+
+/** @deprecated Prefer managerMobileNav; kept for any leftover imports. */
 export const managerPrimaryNav: NavItem[] = managerNav.slice(0, 3)
 
 export const leaderNav: NavItem[] = [

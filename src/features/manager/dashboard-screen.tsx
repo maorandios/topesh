@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Files,
+  Filter,
   MapPin,
   Search,
   UserRound,
@@ -25,14 +26,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import { createManagerDiary, useManagerDb } from "@/data/browser-store"
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { duplicateManagerDiary, useManagerDb } from "@/data/browser-store"
 import { filterManagerDiaries, getManagerDiary, listManagerDiaries, type ManagerDiarySummary } from "@/data/manager"
+import { findCompany, findCustomer, findSite, findUser } from "@/data/lookups"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
-import { DiaryCreatePanel } from "@/features/manager/diary-create-panel"
+import { useManagerCreate } from "@/features/manager/manager-create-provider"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
+import { FilterChips } from "@/features/manager/mobile-filters/filter-chips"
 import { he } from "@/i18n/he"
 import {
-  addCalendarDays,
   formatMonthTitle,
   formatWorkDate,
   formatWorkDateNumeric,
@@ -49,17 +58,39 @@ import { cn } from "cn"
 type DatePreset = "today" | "week" | "month"
 type QuickFilter = DatePreset | "pending" | "submitted" | "cancelled"
 
+type AdvancedFilters = {
+  workDate: string
+  companyId: string
+  customerId: string
+  siteId: string
+  teamLeaderId: string
+  period: "" | "month"
+  status: "" | "cancelled"
+}
+
+const emptyAdvanced = (): AdvancedFilters => ({
+  workDate: "",
+  companyId: "",
+  customerId: "",
+  siteId: "",
+  teamLeaderId: "",
+  period: "",
+  status: "",
+})
+
 export function DashboardScreen() {
   const query = useManagerDb()
+  const { openCreate } = useManagerCreate()
   const [quickFilter, setQuickFilter] = useState<QuickFilter | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
   const [search, setSearch] = useState("")
   const [workDate, setWorkDate] = useState("")
   const [companyId, setCompanyId] = useState("")
   const [customerId, setCustomerId] = useState("")
   const [siteId, setSiteId] = useState("")
   const [teamLeaderId, setTeamLeaderId] = useState("")
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(emptyAdvanced)
   const [loaded, setLoaded] = useState({ key: "", extra: 0 })
   if (query.status === "loading") return <LeaderLoading />
   if (query.status === "error") return <LeaderStoreError />
@@ -118,7 +149,7 @@ export function DashboardScreen() {
   const customers = db.customers
   const sites = db.sites
   const leaders = db.users.filter((user) => user.role === "teamLeader")
-  const quickFilterOptions: Array<[QuickFilter, string]> = [
+  const desktopQuickFilterOptions: Array<[QuickFilter, string]> = [
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
     ["month", he.manager.dashboard.quick.month],
@@ -126,6 +157,46 @@ export function DashboardScreen() {
     ["submitted", he.manager.dashboard.quick.submitted],
     ["cancelled", he.manager.dashboard.quick.cancelled],
   ]
+  const mobileQuickFilterOptions: Array<[QuickFilter, string]> = [
+    ["today", he.manager.dashboard.quick.today],
+    ["week", he.manager.dashboard.quick.week],
+    ["pending", he.manager.dashboard.metrics.pending.label],
+    ["submitted", he.manager.dashboard.quick.submitted],
+  ]
+  const appliedAdvanced: AdvancedFilters = {
+    workDate,
+    companyId,
+    customerId,
+    siteId,
+    teamLeaderId,
+    period: quickFilter === "month" ? "month" : "",
+    status: quickFilter === "cancelled" ? "cancelled" : "",
+  }
+  const filterChips = [
+    quickFilter === "month"
+      ? { id: "month", label: he.manager.dashboard.quick.month }
+      : null,
+    quickFilter === "cancelled"
+      ? { id: "cancelled", label: he.manager.dashboard.quick.cancelled }
+      : null,
+    workDate
+      ? { id: "workDate", label: `${he.manager.dashboard.date}: ${formatWorkDate(workDate)}` }
+      : null,
+    companyId
+      ? { id: "companyId", label: findCompany(db, companyId)?.name ?? he.manager.dashboard.columns.company }
+      : null,
+    customerId
+      ? { id: "customerId", label: findCustomer(db, customerId)?.name ?? he.manager.dashboard.columns.customer }
+      : null,
+    siteId ? { id: "siteId", label: findSite(db, siteId)?.name ?? he.manager.dashboard.columns.site } : null,
+    teamLeaderId
+      ? {
+          id: "teamLeaderId",
+          label: findUser(db, teamLeaderId)?.fullName ?? he.manager.dashboard.columns.leader,
+        }
+      : null,
+  ].filter(Boolean) as Array<{ id: string; label: string }>
+
   const resetFilters = () => {
     setQuickFilter(null)
     setSearch("")
@@ -134,19 +205,62 @@ export function DashboardScreen() {
     setCustomerId("")
     setSiteId("")
     setTeamLeaderId("")
+    setDraftFilters(emptyAdvanced())
     setLoaded({ key: "", extra: 0 })
   }
-  const quickFilters = (
+
+  const openMobileFilters = () => {
+    setDraftFilters(appliedAdvanced)
+    setMobileFiltersOpen(true)
+  }
+
+  const applyMobileFilters = () => {
+    setWorkDate(draftFilters.workDate)
+    setCompanyId(draftFilters.companyId)
+    setCustomerId(draftFilters.customerId)
+    setSiteId(draftFilters.siteId)
+    setTeamLeaderId(draftFilters.teamLeaderId)
+    if (draftFilters.period === "month") setQuickFilter("month")
+    else if (draftFilters.status === "cancelled") setQuickFilter("cancelled")
+    else setQuickFilter(null)
+    setMobileFiltersOpen(false)
+  }
+
+  const removeChip = (id: string) => {
+    if (id === "month" || id === "cancelled") setQuickFilter(null)
+    if (id === "workDate") setWorkDate("")
+    if (id === "companyId") {
+      setCompanyId("")
+      setCustomerId("")
+      setSiteId("")
+    }
+    if (id === "customerId") {
+      setCustomerId("")
+      setSiteId("")
+    }
+    if (id === "siteId") setSiteId("")
+    if (id === "teamLeaderId") setTeamLeaderId("")
+  }
+
+  const renderQuickFilters = (
+    options: Array<[QuickFilter, string]>,
+    size: "default" | "mobile" = "default"
+  ) => (
     <div
       role="radiogroup"
       aria-label={he.manager.dashboard.filterTitle}
-      className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-card"
+      className={cn(
+        size === "mobile"
+          ? "flex w-full items-stretch gap-1"
+          : "inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-card"
+      )}
     >
-      {quickFilterOptions.map(([value, label]) => (
+      {options.map(([value, label]) => (
         <FilterSegment
           key={value}
           pressed={quickFilter === value}
           label={label}
+          size={size}
           onClick={() => {
             setQuickFilter(value)
             setWorkDate("")
@@ -156,22 +270,25 @@ export function DashboardScreen() {
       <FilterSegment
         pressed={false}
         label={he.manager.dashboard.reset}
+        size={size}
         onClick={resetFilters}
       />
     </div>
   )
+  const desktopQuickFilters = renderQuickFilters(desktopQuickFilterOptions)
+  const mobileQuickFilters = renderQuickFilters(mobileQuickFilterOptions, "mobile")
 
   return (
     <PageFrame>
       <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2.5 lg:gap-3 xl:grid-cols-5">
           {cards.map((card) => (
             <div
               key={card.key}
-              className="flex flex-col gap-3 rounded-md border border-border bg-card px-4 py-3.5"
+              className="flex flex-col gap-2 rounded-md border border-border bg-card px-3.5 py-3 lg:gap-3 lg:px-4 lg:py-3.5"
             >
               <p className="text-sm text-muted-foreground">{card.label}</p>
-              <p className="text-start text-3xl font-semibold tabular-nums tracking-tight text-foreground">
+              <p className="text-start text-2xl font-semibold tabular-nums tracking-tight text-foreground lg:text-3xl">
                 {card.value}
               </p>
               <p className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -182,10 +299,10 @@ export function DashboardScreen() {
           ))}
           <button
             type="button"
-            className="pressable flex flex-col gap-3 rounded-md border border-primary bg-primary px-4 py-3.5 text-start text-primary-foreground"
+            className="pressable hidden flex-col gap-3 rounded-md border border-primary bg-primary px-4 py-3.5 text-start text-primary-foreground lg:flex"
             onClick={() => {
               setOpenId(null)
-              setCreateOpen(true)
+              openCreate()
             }}
           >
             <span className="text-sm text-primary-foreground/80">{metrics.newDiary.label}</span>
@@ -196,7 +313,41 @@ export function DashboardScreen() {
             </span>
           </button>
         </div>
-        <section className="overflow-x-auto rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5">
+
+        <div className="flex items-center gap-2 lg:hidden">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={search}
+              placeholder={he.manager.dashboard.searchFree}
+              className="h-10 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <Button type="button" variant="outline" size="default" className="h-10 shrink-0" onClick={openMobileFilters}>
+            <Filter className="size-4" aria-hidden />
+            {he.manager.reports.filters}
+          </Button>
+        </div>
+
+        <FilterChips
+          chips={filterChips}
+          onRemove={removeChip}
+          onClear={() => {
+            if (quickFilter === "month" || quickFilter === "cancelled") setQuickFilter(null)
+            setWorkDate("")
+            setCompanyId("")
+            setCustomerId("")
+            setSiteId("")
+            setTeamLeaderId("")
+          }}
+          clearLabel={he.nav.clearFilters}
+        />
+
+        <section className="hidden overflow-x-auto rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5 lg:block">
           <div className="grid min-w-[56rem] grid-cols-6 gap-3">
             <FilterField label={he.manager.dashboard.searchFree} icon={Search}>
               <Input
@@ -268,27 +419,24 @@ export function DashboardScreen() {
         <DiaryTable
           diaries={visibleDiaries}
           empty={diaries.length === 0}
-          toolbar={quickFilters}
+          toolbar={desktopQuickFilters}
           onOpen={(id) => {
-            setCreateOpen(false)
             setOpenId(id)
           }}
         />
-        {diaries.length === 0 ? null : (
+        {diaries.length === 0 ? (
+          <div className="rounded-md border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground lg:hidden">
+            {he.manager.empty}
+          </div>
+        ) : (
           <>
             <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-              <li className="flex justify-end border-b border-border bg-muted/70 px-3 py-2.5">
-                {quickFilters}
+              <li className="border-b border-border bg-muted/70 px-2 py-2">
+                {mobileQuickFilters}
               </li>
               {visibleDiaries.map((diary) => (
                 <li key={diary.id} className="border-b border-border last:border-b-0">
-                  <DiaryRow
-                    diary={diary}
-                    onOpen={(id) => {
-                      setCreateOpen(false)
-                      setOpenId(id)
-                    }}
-                  />
+                  <DiaryRow diary={diary} onOpen={setOpenId} />
                 </li>
               ))}
             </ul>
@@ -306,8 +454,122 @@ export function DashboardScreen() {
           </>
         )}
       </div>
+
+      <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
+        <SheetContent
+          side="bottom"
+          className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-t-2xl p-0"
+        >
+          <SheetHeader className="shrink-0 border-b border-border px-4 py-3">
+            <SheetTitle>{he.manager.reports.filters}</SheetTitle>
+          </SheetHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex flex-col gap-3">
+              <FilterField label={he.manager.dashboard.date} icon={CalendarDays}>
+                <FilterDate
+                  value={draftFilters.workDate}
+                  placeholder={he.manager.dashboard.pickDate}
+                  onValueChange={(value) =>
+                    setDraftFilters((prev) => ({ ...prev, workDate: value, period: "" }))
+                  }
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.quick.month} icon={CalendarDays}>
+                <FilterSelect
+                  value={draftFilters.period}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    { value: "month", label: he.manager.dashboard.quick.month },
+                  ]}
+                  onValueChange={(value) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      period: value === "month" ? "month" : "",
+                      workDate: value === "month" ? "" : prev.workDate,
+                      status: value === "month" ? "" : prev.status,
+                    }))
+                  }
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.columns.status} icon={Files}>
+                <FilterSelect
+                  value={draftFilters.status}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    { value: "cancelled", label: he.manager.dashboard.quick.cancelled },
+                  ]}
+                  onValueChange={(value) =>
+                    setDraftFilters((prev) => ({
+                      ...prev,
+                      status: value === "cancelled" ? "cancelled" : "",
+                      period: value === "cancelled" ? "" : prev.period,
+                    }))
+                  }
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.columns.company} icon={Building2}>
+                <FilterSelect
+                  value={draftFilters.companyId}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    ...sortSelectOptions(db.companies.map((company) => ({ value: company.id, label: company.name }))),
+                  ]}
+                  onValueChange={(value) =>
+                    setDraftFilters((prev) => ({ ...prev, companyId: value, customerId: "", siteId: "" }))
+                  }
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.columns.customer} icon={Users}>
+                <FilterSelect
+                  value={draftFilters.customerId}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    ...sortSelectOptions(customers.map((customer) => ({ value: customer.id, label: customer.name }))),
+                  ]}
+                  onValueChange={(value) =>
+                    setDraftFilters((prev) => ({ ...prev, customerId: value, siteId: "" }))
+                  }
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.columns.site} icon={MapPin}>
+                <FilterSelect
+                  value={draftFilters.siteId}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    ...sortSelectOptions(sites.map((site) => ({ value: site.id, label: site.name }))),
+                  ]}
+                  onValueChange={(value) => setDraftFilters((prev) => ({ ...prev, siteId: value }))}
+                />
+              </FilterField>
+              <FilterField label={he.manager.dashboard.columns.leader} icon={UserRound}>
+                <FilterSelect
+                  value={draftFilters.teamLeaderId}
+                  options={[
+                    { value: "", label: he.manager.all },
+                    ...sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName }))),
+                  ]}
+                  onValueChange={(value) => setDraftFilters((prev) => ({ ...prev, teamLeaderId: value }))}
+                />
+              </FilterField>
+            </div>
+          </div>
+          <SheetFooter className="shrink-0 flex-row gap-2 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 w-[30%]"
+              onClick={() => setDraftFilters(emptyAdvanced())}
+            >
+              {he.nav.clearFilters}
+            </Button>
+            <Button type="button" className="h-10 w-[70%]" onClick={applyMobileFilters}>
+              {he.nav.applyFilters}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       <DiaryPanel db={db} diary={openDiary} onOpenChange={(open) => { if (!open) setOpenId(null) }} />
-      <DiaryCreatePanel db={db} open={createOpen} onOpenChange={setCreateOpen} />
     </PageFrame>
   )
 }
@@ -316,10 +578,12 @@ function FilterSegment({
   pressed,
   label,
   onClick,
+  size = "default",
 }: {
   pressed: boolean
   label: string
   onClick: () => void
+  size?: "default" | "mobile"
 }) {
   return (
     <button
@@ -327,10 +591,15 @@ function FilterSegment({
       role="radio"
       aria-checked={pressed}
       className={cn(
-        "pressable h-8 shrink-0 px-3 text-xs whitespace-nowrap transition-colors",
+        "pressable whitespace-nowrap transition-colors",
+        size === "mobile"
+          ? "min-h-11 min-w-0 flex-1 rounded-md px-1.5 text-center text-sm"
+          : "h-8 shrink-0 px-3 text-xs",
         pressed
           ? "bg-primary font-medium text-primary-foreground"
-          : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
+          : size === "mobile"
+            ? "bg-transparent text-foreground hover:bg-background/60"
+            : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
       )}
       onClick={onClick}
     >
@@ -340,16 +609,7 @@ function FilterSegment({
 }
 
 function duplicateNextDay(diary: ManagerDiarySummary) {
-  const result = createManagerDiary({
-    teamLeaderId: diary.teamLeaderId,
-    workDate: addCalendarDays(jerusalemToday(), 1),
-    companyId: diary.companyId,
-    customerId: diary.customerId,
-    siteId: diary.siteId,
-    subSiteName: diary.subSiteName,
-    projectName: diary.projectName,
-    workOrderNumber: diary.workOrderNumber,
-  })
+  const result = duplicateManagerDiary(diary.id)
   if (result.ok) toast.success(he.manager.created)
   else toast(he.manager.invalid)
 }
@@ -706,29 +966,37 @@ function DiaryRow({
   diary: ManagerDiarySummary
   onOpen: (id: string) => void
 }) {
+  const place = [diary.siteName, diary.subSiteName].filter(Boolean).join(" · ")
+  const statusDot = diary.duplicatedFromId
+    ? "bg-sky-500"
+    : diary.status === "pending"
+      ? "bg-orange-500"
+      : diary.status === "submitted"
+        ? "bg-emerald-500"
+        : diary.status === "cancelled"
+          ? "bg-zinc-500"
+          : null
   return (
-    <div className="flex min-h-11 items-center gap-2 px-3 py-1 text-sm">
-      <button
-        type="button"
-        className={cn(
-          "min-w-0 flex-1 py-2 text-start",
-          diary.status === "cancelled" && "text-muted-foreground line-through"
-        )}
-        onClick={() => onOpen(diary.id)}
-      >
-        <span className="block truncate font-medium">{diary.subSiteName}</span>
-        <span className="relative block truncate text-xs text-muted-foreground">
-          {isUpcomingWorkDate(diary.workDate) ? (
-            <span
-              className="absolute top-1/2 end-full me-1.5 size-1.5 -translate-y-1/2 rounded-full bg-emerald-500"
-              aria-hidden
-            />
+    <button
+      type="button"
+      className={cn(
+        "flex w-full min-w-0 flex-col gap-1 px-3 py-2.5 text-start text-sm",
+        diary.status === "cancelled" && "text-muted-foreground line-through"
+      )}
+      onClick={() => onOpen(diary.id)}
+    >
+      <span className="flex items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-2 truncate font-medium">
+          {statusDot ? (
+            <span className={cn("size-2 shrink-0 rounded-full", statusDot)} aria-hidden />
           ) : null}
-          {formatWorkDate(diary.workDate)} · {diary.teamLeaderName} · {diary.siteName}
+          <span className="truncate">{formatWorkDate(diary.workDate)}</span>
         </span>
-      </button>
-      <DuplicateButton diary={diary} />
-    </div>
+        <span className="shrink-0 text-xs text-muted-foreground">{diaryStatusLabel(diary.status)}</span>
+      </span>
+      <span className="truncate text-xs text-muted-foreground">{place}</span>
+      <span className="truncate text-xs text-muted-foreground">{diary.teamLeaderName}</span>
+    </button>
   )
 }
 

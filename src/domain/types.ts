@@ -79,6 +79,8 @@ export type WorkDiary = {
   createdAt: string
   submittedAt: string | null
   cancelledAt: string | null
+  /** Set when this diary was created via duplicate/שכפול. */
+  duplicatedFromId: string | null
 }
 
 /** Team-leader views omit work-order and org assignment IDs. */

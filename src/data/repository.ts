@@ -297,6 +297,7 @@ function toDetail(db: MockDb, diary: MockDb["diaries"][number]): LeaderDiaryDeta
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
     cancelledAt: diary.cancelledAt ?? null,
+    duplicatedFromId: diary.duplicatedFromId ?? null,
     siteName: findSite(db, diary.siteId)?.name ?? "",
     workers: db.workers
       .filter((worker) => worker.diaryId === diary.id)

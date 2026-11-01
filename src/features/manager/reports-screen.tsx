@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input"
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -61,6 +62,7 @@ import {
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
+import { FilterChips } from "@/features/manager/mobile-filters/filter-chips"
 import { exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
 import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { exportReportPdf } from "@/features/manager/reports/export-pdf"
@@ -92,6 +94,7 @@ export function ReportsScreen() {
 
 function ReportsReady({ db }: { db: MockDb }) {
   const [filters, setFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
+  const [draftFilters, setDraftFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [openDiaryId, setOpenDiaryId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -101,7 +104,9 @@ function ReportsReady({ db }: { db: MockDb }) {
   const [loaded, setLoaded] = useState({ key: "", extra: 0 })
 
   const options = workDiarySearchOptions(db, filters)
+  const draftOptions = workDiarySearchOptions(db, draftFilters)
   const dateError = validateWorkDiarySearchDates(filters.from, filters.to)
+  const draftDateError = validateWorkDiarySearchDates(draftFilters.from, draftFilters.to)
   const diaries = useMemo(() => searchWorkDiaries(db, filters), [db, filters])
   const filterKey = JSON.stringify(filters)
   const extra = loaded.key === filterKey ? loaded.extra : 0
@@ -115,9 +120,12 @@ function ReportsReady({ db }: { db: MockDb }) {
   const someSelected = selectedDiaries.length > 0 && !allSelected
   const canExport = selectedDiaries.length > 0 && !exporting
   const hasActiveFilters = isFilterActive(filters)
+  const filterChips = buildReportFilterChips(db, filters)
 
   useEffect(() => {
     const visible = new Set(diaries.map((diary) => diary.id))
+    // Keep selection in sync with the visible result set after filters change.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- prune stale selected ids
     setSelectedIds((prev) => {
       let changed = false
       const next = new Set<string>()
@@ -133,11 +141,53 @@ function ReportsReady({ db }: { db: MockDb }) {
     setFilters((prev) => normalizeCascade(db, { ...prev, ...patch }))
   }
 
+  const patchDraft = (patch: Partial<WorkDiarySearchFilters>) => {
+    setDraftFilters((prev) => normalizeCascade(db, { ...prev, ...patch }))
+  }
+
   const clearFilters = () => {
     setFilters(emptyWorkDiarySearchFilters())
+    setDraftFilters(emptyWorkDiarySearchFilters())
     setSelectedIds(new Set())
     setLoaded({ key: "", extra: 0 })
     setMobileFiltersOpen(false)
+  }
+
+  const openMobileFilters = () => {
+    setDraftFilters(filters)
+    setMobileFiltersOpen(true)
+  }
+
+  const applyMobileFilters = () => {
+    if (draftDateError) return
+    setFilters(draftFilters)
+    setMobileFiltersOpen(false)
+  }
+
+  const removeChip = (id: string) => {
+    if (id === "from") patchFilters({ from: "" })
+    if (id === "to") patchFilters({ to: "" })
+    if (id === "workOrderNumber") patchFilters({ workOrderNumber: "" })
+    if (id.startsWith("company:")) {
+      const value = id.slice("company:".length)
+      patchFilters({ companyIds: filters.companyIds.filter((item) => item !== value) })
+    }
+    if (id.startsWith("customer:")) {
+      const value = id.slice("customer:".length)
+      patchFilters({ customerIds: filters.customerIds.filter((item) => item !== value) })
+    }
+    if (id.startsWith("site:")) {
+      const value = id.slice("site:".length)
+      patchFilters({ siteIds: filters.siteIds.filter((item) => item !== value) })
+    }
+    if (id.startsWith("leader:")) {
+      const value = id.slice("leader:".length)
+      patchFilters({ teamLeaderIds: filters.teamLeaderIds.filter((item) => item !== value) })
+    }
+    if (id.startsWith("status:")) {
+      const value = id.slice("status:".length) as WorkDiarySearchFilters["statuses"][number]
+      patchFilters({ statuses: filters.statuses.filter((item) => item !== value) })
+    }
   }
 
   const toggleAll = (checked: boolean) => {
@@ -220,17 +270,31 @@ function ReportsReady({ db }: { db: MockDb }) {
   return (
     <PageFrame>
       <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="flex justify-end lg:hidden">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setMobileFiltersOpen(true)}
-          >
+        <div className="flex items-center gap-2 lg:hidden">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+              aria-hidden
+            />
+            <Input
+              value={filters.workOrderNumber}
+              placeholder={he.manager.reports.workOrderPlaceholder}
+              className="h-10 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
+              onChange={(event) => patchFilters({ workOrderNumber: event.target.value })}
+            />
+          </div>
+          <Button type="button" variant="outline" size="default" className="h-10 shrink-0" onClick={openMobileFilters}>
             <Filter className="size-4" aria-hidden />
             {he.manager.reports.filters}
           </Button>
         </div>
+
+        <FilterChips
+          chips={filterChips}
+          onRemove={removeChip}
+          onClear={clearFilters}
+          clearLabel={he.nav.clearFilters}
+        />
 
         <div className="hidden lg:block">
           <FilterPanel
@@ -246,21 +310,40 @@ function ReportsReady({ db }: { db: MockDb }) {
         <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
           <SheetContent
             side="bottom"
-            className="max-h-[90vh] overflow-y-auto rounded-t-2xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+            className="flex max-h-[90vh] flex-col gap-0 overflow-hidden rounded-t-2xl p-0"
           >
-            <SheetHeader className="px-0">
+            <SheetHeader className="shrink-0 border-b border-border px-4 py-3">
               <SheetTitle>{he.manager.reports.filters}</SheetTitle>
             </SheetHeader>
-            <div className="mt-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
               <FilterPanel
-                filters={filters}
-                options={options}
-                dateError={dateError}
-                hasActiveFilters={hasActiveFilters}
-                onPatch={patchFilters}
-                onClear={clearFilters}
+                filters={draftFilters}
+                options={draftOptions}
+                dateError={draftDateError}
+                hasActiveFilters={isFilterActive(draftFilters)}
+                onPatch={patchDraft}
+                onClear={() => setDraftFilters(emptyWorkDiarySearchFilters())}
+                compact
               />
             </div>
+            <SheetFooter className="shrink-0 flex-row gap-2 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 w-[30%]"
+                onClick={() => setDraftFilters(emptyWorkDiarySearchFilters())}
+              >
+                {he.nav.clearFilters}
+              </Button>
+              <Button
+                type="button"
+                className="h-10 w-[70%]"
+                disabled={Boolean(draftDateError)}
+                onClick={applyMobileFilters}
+              >
+                {he.nav.applyFilters}
+              </Button>
+            </SheetFooter>
           </SheetContent>
         </Sheet>
 
@@ -452,6 +535,7 @@ function FilterPanel({
   hasActiveFilters,
   onPatch,
   onClear,
+  compact = false,
 }: {
   filters: WorkDiarySearchFilters
   options: ReturnType<typeof workDiarySearchOptions>
@@ -459,10 +543,16 @@ function FilterPanel({
   hasActiveFilters: boolean
   onPatch: (patch: Partial<WorkDiarySearchFilters>) => void
   onClear: () => void
+  compact?: boolean
 }) {
   return (
-    <section className="overflow-x-auto rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5">
-      <div className="grid min-w-[56rem] grid-cols-4 gap-3">
+    <section
+      className={cn(
+        "rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5",
+        compact ? "overflow-visible border-0 bg-transparent px-0 py-0" : "overflow-x-auto"
+      )}
+    >
+      <div className={cn("grid gap-3", compact ? "grid-cols-1" : "min-w-[56rem] grid-cols-4")}>
         <FilterField label={he.manager.reports.from} icon={CalendarDays}>
           <FilterDate
             value={filters.from}
@@ -513,7 +603,7 @@ function FilterPanel({
             onValuesChange={(teamLeaderIds) => onPatch({ teamLeaderIds })}
           />
         </FilterField>
-        <div className="flex min-w-0 items-stretch gap-2">
+        <div className={cn("flex min-w-0 items-stretch gap-2", compact && "flex-col")}>
           <div className="min-w-0 flex-1">
             <FilterField label={he.manager.reports.status} icon={ClipboardList}>
               <MultiFilterSelect
@@ -528,17 +618,19 @@ function FilterPanel({
               />
             </FilterField>
           </div>
-          <div className="flex w-[40%] shrink-0 flex-col justify-end">
-            <Button
-              type="button"
-              disabled={!hasActiveFilters}
-              className="h-10 w-full gap-1.5 rounded-md px-2 text-xs"
-              onClick={onClear}
-            >
-              <X className="size-3.5" aria-hidden />
-              {he.manager.reports.clearFilters}
-            </Button>
-          </div>
+          {compact ? null : (
+            <div className="flex w-[40%] shrink-0 flex-col justify-end">
+              <Button
+                type="button"
+                disabled={!hasActiveFilters}
+                className="h-10 w-full gap-1.5 rounded-md px-2 text-xs"
+                onClick={onClear}
+              >
+                <X className="size-3.5" aria-hidden />
+                {he.manager.reports.clearFilters}
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1025,6 +1117,40 @@ function buildAppliedExport(
         .join(", "),
     },
   }
+}
+
+function buildReportFilterChips(db: MockDb, filters: WorkDiarySearchFilters) {
+  const chips: Array<{ id: string; label: string }> = []
+  if (filters.from) chips.push({ id: "from", label: `${he.manager.reports.from}: ${formatWorkDate(filters.from)}` })
+  if (filters.to) chips.push({ id: "to", label: `${he.manager.reports.to}: ${formatWorkDate(filters.to)}` })
+  for (const id of filters.companyIds) {
+    chips.push({ id: `company:${id}`, label: findCompany(db, id)?.name ?? id })
+  }
+  for (const id of filters.customerIds) {
+    chips.push({ id: `customer:${id}`, label: findCustomer(db, id)?.name ?? id })
+  }
+  for (const id of filters.siteIds) {
+    chips.push({
+      id: `site:${id}`,
+      label: db.sites.find((site) => site.id === id)?.name ?? id,
+    })
+  }
+  for (const id of filters.teamLeaderIds) {
+    chips.push({
+      id: `leader:${id}`,
+      label: db.users.find((user) => user.id === id)?.fullName ?? id,
+    })
+  }
+  if (filters.workOrderNumber.trim()) {
+    chips.push({ id: "workOrderNumber", label: filters.workOrderNumber.trim() })
+  }
+  for (const status of filters.statuses) {
+    chips.push({
+      id: `status:${status}`,
+      label: status === "pending" ? he.leader.status.pending : he.leader.status.submitted,
+    })
+  }
+  return chips
 }
 
 function isFilterActive(filters: WorkDiarySearchFilters) {

@@ -140,6 +140,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-27T08:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-uri-parking",
@@ -156,6 +157,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-27T08:05:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-uri-pumps",
@@ -172,6 +174,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-25T08:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-uri-building",
@@ -188,6 +191,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-20T08:00:00.000Z",
       submittedAt: "2026-10-21T14:00:00.000Z",
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-noa-pumps",
@@ -204,6 +208,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-27T09:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-noa-parking",
@@ -220,6 +225,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-14T09:00:00.000Z",
       submittedAt: "2026-10-15T13:30:00.000Z",
       cancelledAt: null,
+      duplicatedFromId: null,
     },
   ]
 
@@ -239,6 +245,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-29T07:30:00.000Z",
       submittedAt: "2026-10-30T15:40:00.000Z",
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-rich-campus",
@@ -255,6 +262,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-28T08:10:00.000Z",
       submittedAt: "2026-10-29T16:20:00.000Z",
       cancelledAt: null,
+      duplicatedFromId: null,
     },
     {
       id: "diary-rich-mall",
@@ -271,6 +279,7 @@ function buildDemoBundle() {
       createdAt: "2026-10-26T09:00:00.000Z",
       submittedAt: "2026-10-27T14:55:00.000Z",
       cancelledAt: null,
+      duplicatedFromId: null,
     },
   ]
 
@@ -376,6 +385,7 @@ function buildDemoBundle() {
       createdAt: `${createdDay}T08:${String(index % 60).padStart(2, "0")}:00.000Z`,
       submittedAt: status === "submitted" ? `${workDate}T16:00:00.000Z` : null,
       cancelledAt: status === "cancelled" ? `${workDate}T11:00:00.000Z` : null,
+      duplicatedFromId: null,
     })
 
     if (status === "submitted") {

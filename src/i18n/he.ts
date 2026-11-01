@@ -389,6 +389,7 @@ export const he = {
   nav: {
     dashboard: "לוח בקרה",
     dashboardShort: "לוח",
+    homeShort: "ראשי",
     workDiaries: "יומני עבודה",
     workDiariesShort: "יומנים",
     dataManagement: "ניהול נתונים",
@@ -396,11 +397,15 @@ export const he = {
     catalog: "מערכות ורכיבים",
     catalogShort: "מערכות",
     reports: "דוחות",
+    create: "יצירת יומן",
+    createShort: "יצירה",
     settings: "הגדרות",
     menu: "תפריט",
     myDiaries: "היומנים שלי",
     history: "היסטוריה",
     menuTitle: "ניווט",
+    applyFilters: "הצג תוצאות",
+    clearFilters: "ניקוי סינון",
   },
   install: {
     title: "התקנה במסך הבית",

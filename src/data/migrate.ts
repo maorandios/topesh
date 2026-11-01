@@ -51,6 +51,7 @@ export function parseDatabase(value: unknown): MockDb | null {
         cancelledAt:
           diary.cancelledAt ??
           (diary.status === "cancelled" ? diary.createdAt : null),
+        duplicatedFromId: diary.duplicatedFromId ?? null,
       })),
     }
   }
@@ -201,6 +202,10 @@ function migrateDiary(
         ? typeof (diary as unknown as { cancelledAt?: string | null }).cancelledAt === "string"
           ? (diary as unknown as { cancelledAt: string }).cancelledAt
           : diary.createdAt
+        : null,
+    duplicatedFromId:
+      typeof (diary as unknown as { duplicatedFromId?: string | null }).duplicatedFromId === "string"
+        ? (diary as unknown as { duplicatedFromId: string }).duplicatedFromId
         : null,
   }
 }
@@ -392,7 +397,10 @@ function isDiary(value: unknown): boolean {
     (diary.submittedAt === null || typeof diary.submittedAt === "string") &&
     (diary.cancelledAt === null ||
       diary.cancelledAt === undefined ||
-      typeof diary.cancelledAt === "string")
+      typeof diary.cancelledAt === "string") &&
+    (diary.duplicatedFromId === null ||
+      diary.duplicatedFromId === undefined ||
+      typeof diary.duplicatedFromId === "string")
   )
 }
 
