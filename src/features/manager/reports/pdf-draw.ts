@@ -1,8 +1,6 @@
 import fontkit from "@pdf-lib/fontkit"
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib"
 import { loadHebrewFontBytes } from "@/features/manager/reports/pdf-font"
-import { shapeRtl } from "@/features/manager/reports/hebrew-text"
-
 export const PAGE = { width: 595.28, height: 841.89 }
 export const MARGIN = 40
 export const COLORS = {
@@ -27,6 +25,7 @@ export type PdfCtx = {
 
 type Run = { text: string; hebrew: boolean }
 
+/** Split so Hebrew uses Noto and Latin/digits use Helvetica; spaces stay with the prior run. */
 function splitRuns(text: string): Run[] {
   const runs: Run[] = []
   let current = ""
@@ -84,10 +83,13 @@ function fontFor(ctx: PdfCtx, hebrew: boolean, bold: boolean) {
   return bold ? ctx.latinBold : ctx.latin
 }
 
+/**
+ * Paint logical runs right→left so the first logical segment sits nearest the
+ * right margin (RTL line layout) while each run’s glyphs stay in readable order.
+ */
 function measureMixed(ctx: PdfCtx, text: string, size: number, bold: boolean) {
   return splitRuns(text).reduce((sum, run) => {
-    const content = run.hebrew ? shapeRtl(run.text) : run.text
-    return sum + fontFor(ctx, run.hebrew, bold).widthOfTextAtSize(content, size)
+    return sum + fontFor(ctx, run.hebrew, bold).widthOfTextAtSize(run.text, size)
   }, 0)
 }
 
@@ -100,14 +102,16 @@ function drawMixedAt(
   size: number,
   bold: boolean
 ) {
-  // Paint runs left→right in visual order: reverse logical runs for RTL.
-  const runs = splitRuns(text).reverse()
-  let x = xLeft
-  for (const run of runs) {
-    const content = run.hebrew ? shapeRtl(run.text) : run.text
+  const runs = splitRuns(text)
+  const widths = runs.map((run) => fontFor(ctx, run.hebrew, bold).widthOfTextAtSize(run.text, size))
+  const total = widths.reduce((sum, w) => sum + w, 0)
+  let x = xLeft + total
+  for (let i = 0; i < runs.length; i++) {
+    const run = runs[i]!
+    const width = widths[i]!
+    x -= width
     const font = fontFor(ctx, run.hebrew, bold)
-    page.drawText(content, { x, y, size, font, color: COLORS.ink })
-    x += font.widthOfTextAtSize(content, size)
+    page.drawText(run.text, { x, y, size, font, color: COLORS.ink })
   }
 }
 

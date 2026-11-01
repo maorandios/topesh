@@ -13,6 +13,7 @@ import {
   duplicateDiary,
   editDiary,
   markDiaryCancelled,
+  markDiarySubmitted,
   saveCompany,
   deleteComponent,
   deleteDomain,
@@ -202,6 +203,12 @@ export function markManagerDiaryCancelled(diaryId: string) {
   const db = ensureRepository().readDb()
   if (!db) return { ok: false as const }
   return mutate(markDiaryCancelled(db, diaryId))
+}
+
+export function markManagerDiarySubmitted(diaryId: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const }
+  return mutate(markDiarySubmitted(db, diaryId))
 }
 
 export function duplicateManagerDiary(diaryId: string) {

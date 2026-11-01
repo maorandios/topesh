@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
-  FileSpreadsheet,
   FileText,
   Filter,
   MapPin,
@@ -21,6 +20,14 @@ import {
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -54,7 +61,8 @@ import {
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
-import { exportReportExcel } from "@/features/manager/reports/export-excel"
+import { exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
+import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { exportReportPdf } from "@/features/manager/reports/export-pdf"
 import { he } from "@/i18n/he"
 import { BidiText } from "@/lib/bidi"
@@ -73,6 +81,8 @@ const filterControlClass =
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 
+type ExportMode = "list" | "contents"
+
 export function ReportsScreen() {
   const query = useManagerDb()
   if (query.status === "loading") return <LeaderLoading />
@@ -84,12 +94,18 @@ function ReportsReady({ db }: { db: MockDb }) {
   const [filters, setFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [openDiaryId, setOpenDiaryId] = useState<string | null>(null)
-  const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
+  const [exportMode, setExportMode] = useState<ExportMode>("list")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [loaded, setLoaded] = useState({ key: "", extra: 0 })
 
   const options = workDiarySearchOptions(db, filters)
   const dateError = validateWorkDiarySearchDates(filters.from, filters.to)
   const diaries = useMemo(() => searchWorkDiaries(db, filters), [db, filters])
+  const filterKey = JSON.stringify(filters)
+  const extra = loaded.key === filterKey ? loaded.extra : 0
+  const visibleDiaries = diaries.slice(0, 30 + extra)
   const selectedDiaries = useMemo(
     () => diaries.filter((diary) => selectedIds.has(diary.id)),
     [diaries, selectedIds]
@@ -97,7 +113,7 @@ function ReportsReady({ db }: { db: MockDb }) {
   const openDiary = openDiaryId ? getManagerDiary(db, openDiaryId) : null
   const allSelected = diaries.length > 0 && selectedDiaries.length === diaries.length
   const someSelected = selectedDiaries.length > 0 && !allSelected
-  const canExport = selectedDiaries.length > 0 && exporting === null
+  const canExport = selectedDiaries.length > 0 && !exporting
   const hasActiveFilters = isFilterActive(filters)
 
   useEffect(() => {
@@ -120,6 +136,7 @@ function ReportsReady({ db }: { db: MockDb }) {
   const clearFilters = () => {
     setFilters(emptyWorkDiarySearchFilters())
     setSelectedIds(new Set())
+    setLoaded({ key: "", extra: 0 })
     setMobileFiltersOpen(false)
   }
 
@@ -136,25 +153,44 @@ function ReportsReady({ db }: { db: MockDb }) {
     })
   }
 
-  const runExport = async (kind: "excel" | "pdf") => {
+  const openExportModal = () => {
     if (selectedDiaries.length === 0) {
       toast(he.manager.reports.exportNeedSelection)
       return
     }
-    setExporting(kind)
+    setExportMode("list")
+    setExportOpen(true)
+  }
+
+  const runExport = async () => {
+    if (selectedDiaries.length === 0) {
+      toast(he.manager.reports.exportNeedSelection)
+      return
+    }
+    const mode = exportMode
+    setExportOpen(false)
+    setExporting(true)
     try {
-      const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
-      if (kind === "excel") {
-        await exportReportExcel(result, labels)
-        toast.success(he.manager.reports.exportExcelDone)
-      } else {
+      if (mode === "list") {
+        const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
         await exportReportPdf(result, labels)
         toast.success(he.manager.reports.exportPdfDone)
+      } else {
+        const details = selectedDiaries
+          .map((summary) => getManagerDiary(db, summary.id))
+          .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail))
+        if (details.length === 0) {
+          toast(he.manager.reports.exportNeedSelection)
+          return
+        }
+        if (details.length === 1) await exportDiaryPdf(details[0]!)
+        else await exportDiariesZip(details, "pdf")
+        toast.success(he.manager.reports.exportDiariesDone)
       }
     } catch {
-      toast.error(kind === "excel" ? he.manager.reports.exportExcelFailed : he.manager.reports.exportPdfFailed)
+      toast.error(he.manager.reports.exportPdfFailed)
     } finally {
-      setExporting(null)
+      setExporting(false)
     }
   }
 
@@ -164,10 +200,22 @@ function ReportsReady({ db }: { db: MockDb }) {
       selectedCount={selectedDiaries.length}
       canExport={canExport}
       exporting={exporting}
-      onExportExcel={() => void runExport("excel")}
-      onExportPdf={() => void runExport("pdf")}
+      onExportPdf={openExportModal}
     />
   )
+
+  const loadMore =
+    visibleDiaries.length < diaries.length ? (
+      <Button
+        type="button"
+        size="touch"
+        variant="outline"
+        className="self-center"
+        onClick={() => setLoaded({ key: filterKey, extra: extra + 50 })}
+      >
+        {he.manager.dashboard.loadMore}
+      </Button>
+    ) : null
 
   return (
     <PageFrame>
@@ -216,43 +264,108 @@ function ReportsReady({ db }: { db: MockDb }) {
           </SheetContent>
         </Sheet>
 
-        <DiaryResultsTable
-          diaries={diaries}
-          selectedIds={selectedIds}
-          allSelected={allSelected}
-          someSelected={someSelected}
-          toolbar={toolbar}
-          onToggleAll={toggleAll}
-          onToggleOne={toggleOne}
-          onOpen={setOpenDiaryId}
-        />
+        <div className="flex flex-col gap-3">
+          <DiaryResultsTable
+            diaries={visibleDiaries}
+            selectedIds={selectedIds}
+            allSelected={allSelected}
+            someSelected={someSelected}
+            toolbar={toolbar}
+            onToggleAll={toggleAll}
+            onToggleOne={toggleOne}
+            onOpen={setOpenDiaryId}
+          />
 
-        {diaries.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-3 py-8 text-center lg:hidden">
-            <div className="mb-4">{toolbar}</div>
-            <p className="text-sm font-medium text-foreground">{he.manager.reports.empty}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{he.manager.reports.emptyHint}</p>
-          </div>
-        ) : (
-          <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-            <li className="border-b border-border bg-muted/70 px-3 py-2.5">{toolbar}</li>
-            {diaries.map((diary, index) => (
-              <li key={diary.id} className="border-b border-border last:border-b-0">
-                <DiaryResultRow
-                  diary={diary}
-                  index={index + 1}
-                  selected={selectedIds.has(diary.id)}
-                  onToggle={(checked) => toggleOne(diary.id, checked)}
-                  onOpen={setOpenDiaryId}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
+          {diaries.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border px-3 py-8 text-center lg:hidden">
+              <div className="mb-4">{toolbar}</div>
+              <p className="text-sm font-medium text-foreground">{he.manager.reports.empty}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{he.manager.reports.emptyHint}</p>
+            </div>
+          ) : (
+            <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
+              <li className="border-b border-border bg-muted/70 px-3 py-2.5">{toolbar}</li>
+              {visibleDiaries.map((diary, index) => (
+                <li key={diary.id} className="border-b border-border last:border-b-0">
+                  <DiaryResultRow
+                    diary={diary}
+                    index={index + 1}
+                    selected={selectedIds.has(diary.id)}
+                    onToggle={(checked) => toggleOne(diary.id, checked)}
+                    onOpen={setOpenDiaryId}
+                  />
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {loadMore}
+        </div>
       </div>
 
       <DiaryPanel db={db} diary={openDiary} onOpenChange={(open) => { if (!open) setOpenDiaryId(null) }} />
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{he.manager.reports.exportModalTitlePdf}</DialogTitle>
+            <DialogDescription>{he.manager.reports.exportModalBody}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2" role="radiogroup" aria-label={he.manager.reports.exportModalBody}>
+            <ExportModeOption
+              pressed={exportMode === "list"}
+              title={he.manager.reports.exportModeList}
+              hint={he.manager.reports.exportModeListHint}
+              onClick={() => setExportMode("list")}
+            />
+            <ExportModeOption
+              pressed={exportMode === "contents"}
+              title={he.manager.reports.exportModeContents}
+              hint={he.manager.reports.exportModeContentsHint}
+              onClick={() => setExportMode("contents")}
+            />
+          </div>
+          <DialogFooter className="sm:justify-start">
+            <Button type="button" onClick={() => void runExport()}>
+              {he.manager.reports.exportConfirm}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => setExportOpen(false)}>
+              {he.manager.reports.exportCancel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </PageFrame>
+  )
+}
+
+function ExportModeOption({
+  pressed,
+  title,
+  hint,
+  onClick,
+}: {
+  pressed: boolean
+  title: string
+  hint: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={pressed}
+      className={cn(
+        "rounded-md border px-3 py-3 text-start transition-colors",
+        pressed
+          ? "border-foreground bg-muted/50"
+          : "border-border bg-card hover:bg-muted/30"
+      )}
+      onClick={onClick}
+    >
+      <span className="block text-sm font-semibold text-foreground">{title}</span>
+      <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+    </button>
   )
 }
 
@@ -261,14 +374,12 @@ function ResultsToolbar({
   selectedCount,
   canExport,
   exporting,
-  onExportExcel,
   onExportPdf,
 }: {
   matchingCount: number
   selectedCount: number
   canExport: boolean
-  exporting: "excel" | "pdf" | null
-  onExportExcel: () => void
+  exporting: boolean
   onExportPdf: () => void
 }) {
   return (
@@ -278,13 +389,7 @@ function ResultsToolbar({
       className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-white"
     >
       <ToolbarAction
-        label={exporting === "excel" ? "..." : he.manager.reports.exportExcel}
-        icon={FileSpreadsheet}
-        disabled={!canExport}
-        onClick={onExportExcel}
-      />
-      <ToolbarAction
-        label={exporting === "pdf" ? "..." : he.manager.reports.exportPdf}
+        label={exporting ? "..." : he.manager.reports.exportPdf}
         icon={FileText}
         disabled={!canExport}
         onClick={onExportPdf}
@@ -537,7 +642,7 @@ function DiaryResultsTable({
                   className={cn(
                     "cursor-pointer border-b border-border/80 last:border-b-0 hover:bg-muted/40",
                     selected && "bg-muted/30",
-                    diary.status === "cancelled" && "text-muted-foreground [&>td:not(:nth-child(-n+2))]:line-through"
+                    diary.status === "cancelled" && "text-muted-foreground [&>td:not(:last-child)]:line-through"
                   )}
                   onClick={() => onOpen(diary.id)}
                   onKeyDown={(event) => {

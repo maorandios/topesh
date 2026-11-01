@@ -4,21 +4,24 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } fro
 import {
   Building2,
   Cable,
+  CheckCircle2,
   FileText,
   FolderKanban,
   Info,
   Layers3,
   MapPin,
   MessageSquareText,
+  Pencil,
   Plus,
   Settings,
+  Trash2,
   UserRound,
   Users,
   X,
+  XCircle,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -46,9 +49,10 @@ import {
   deleteManagerDiary,
   editManagerDiary,
   markManagerDiaryCancelled,
+  markManagerDiarySubmitted,
 } from "@/data/browser-store"
 import { findCompany, findCustomer, findSite, findUser, activeDomainsFrom } from "@/data/lookups"
-import { getManagerDiary } from "@/data/manager"
+import { diarySubmitMissing, getManagerDiary, type DiarySubmitField } from "@/data/manager"
 import { parseQuantityInput } from "@/data/quantity"
 import type { MockDb } from "@/data/seed"
 import type { DiaryStatus } from "@/domain/types"
@@ -71,10 +75,25 @@ type PanelDiary = NonNullable<ReturnType<typeof getManagerDiary>>
 type DraftItem = {
   id: string
   componentId: string
+  domainId: string
   domainName: string
   componentName: string
   unit: string
   quantity: string
+}
+
+type DomainOption = {
+  id: string
+  name: string
+  components: Array<{ id: string; name: string; unit: string }>
+}
+
+type ComponentOption = {
+  id: string
+  name: string
+  unit: string
+  domainId: string
+  domainName: string
 }
 type PanelDraft = {
   companyId: string
@@ -89,7 +108,7 @@ type PanelDraft = {
   checkedIds: string[]
   notes: string
 }
-type ConfirmKind = "cancel" | "delete"
+type ConfirmKind = "cancel" | "delete" | "submit"
 type TextField = "project" | "subSite" | "workOrder" | "notes" | `qty:${string}` | null
 
 export function diaryStatusLabel(status: DiaryStatus) {
@@ -205,6 +224,7 @@ function createDraft(diary: PanelDiary): PanelDraft {
     items: diary.items.map((item) => ({
       id: item.id,
       componentId: item.componentId,
+      domainId: item.domainId,
       domainName: item.domainName,
       componentName: item.componentName,
       unit: item.unit,
@@ -230,6 +250,17 @@ function DiaryBody({
   const [draft, setDraft] = useState<PanelDraft | null>(null)
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null)
   const [error, setError] = useState(false)
+  const [showMissing, setShowMissing] = useState(false)
+
+  const missingFields = diary.status === "pending" ? diarySubmitMissing(diary) : []
+  const canSubmit = diary.status === "pending" && missingFields.length === 0
+  const highlightedMissing = showMissing ? missingFields : []
+
+  useEffect(() => {
+    if (!showMissing || highlightedMissing.length === 0) return
+    const target = document.querySelector<HTMLElement>("[data-missing='true']")
+    target?.scrollIntoView({ block: "center", behavior: "smooth" })
+  }, [showMissing, highlightedMissing])
 
   const runConfirm = () => {
     if (confirm === "delete") {
@@ -237,6 +268,17 @@ function DiaryBody({
       if (!result.ok) return
       toast(he.manager.panel.deleted)
       onClose()
+      return
+    }
+    if (confirm === "submit") {
+      const result = markManagerDiarySubmitted(diary.id)
+      setConfirm(null)
+      if (!result.ok) {
+        setShowMissing(true)
+        return
+      }
+      setShowMissing(false)
+      toast.success(he.manager.panel.submitted)
       return
     }
     const result = markManagerDiaryCancelled(diary.id)
@@ -249,6 +291,7 @@ function DiaryBody({
     if (!draft) return
     const parsedItems: { id: string; componentId: string; quantity: number }[] = []
     for (const item of draft.items) {
+      if (!item.componentId) continue
       const parsed = parseQuantityInput(item.quantity)
       if (parsed === null) {
         setError(true)
@@ -287,81 +330,74 @@ function DiaryBody({
     setEditing(false)
     setDraft(null)
     setError(false)
+    setShowMissing(false)
   }
 
-  const headerActions = (
+  const headerActions = editing ? null : (
     <div className="flex shrink-0 items-center gap-1.5">
-      {editing ? (
-        <Badge
-          variant="outline"
-          render={
-            <button
-              type="button"
-              onClick={exitEdit}
-              aria-label={he.manager.panel.cancelEdit}
-            />
-          }
-          className="h-7 cursor-pointer gap-1 rounded-full border-border bg-muted/50 px-2.5 text-xs font-medium text-foreground hover:bg-muted"
-        >
-          <X data-icon="inline-start" className="size-3.5" aria-hidden />
-          {he.manager.panel.cancelEdit}
-        </Badge>
-      ) : null}
       <DropdownMenu>
         <DropdownMenuTrigger
           className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
-          aria-label={he.manager.edit}
+          aria-label={he.manager.organization.actions}
         >
           <Settings className="size-4" aria-hidden />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" sideOffset={6} className="min-w-44 rounded-md p-1.5">
-          {editing ? (
-            <>
-              <DropdownMenuItem className="rounded-md px-3 py-2" onClick={save}>
-                {he.manager.save}
-              </DropdownMenuItem>
-              <DropdownMenuItem className="rounded-md px-3 py-2" onClick={exitEdit}>
-                {he.manager.panel.cancelEdit}
-              </DropdownMenuItem>
-            </>
-          ) : (
-            <>
-              <DropdownMenuItem
-                className="rounded-md px-3 py-2"
-                onClick={() => {
-                  setDraft(createDraft(diary))
-                  setEditing(true)
-                  setError(false)
-                }}
-              >
-                {he.manager.edit}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="rounded-md px-3 py-2"
-                onClick={() => {
-                  void exportDiaryPdf(diary)
-                    .then(() => toast.success(he.manager.panel.exportPdfDone))
-                    .catch(() => toast.error(he.manager.panel.exportPdfFailed))
-                }}
-              >
-                {he.manager.panel.exportPdf}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="rounded-md px-3 py-2"
-                disabled={diary.status === "cancelled"}
-                onClick={() => setConfirm("cancel")}
-              >
-                {he.manager.panel.cancelDiary}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="rounded-md px-3 py-2"
-                variant="destructive"
-                onClick={() => setConfirm("delete")}
-              >
-                {he.manager.panel.deleteDiary}
-              </DropdownMenuItem>
-            </>
-          )}
+        <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="min-w-56 p-1.5">
+          <DropdownMenuItem
+            className="rounded-md px-3 py-2.5"
+            label={he.manager.edit}
+            onClick={() => {
+              setDraft(createDraft(diary))
+              setEditing(true)
+              setError(false)
+              setShowMissing(false)
+            }}
+          >
+            <MenuRow icon={Pencil} label={he.manager.edit} />
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="rounded-md px-3 py-2.5"
+            label={he.manager.panel.exportPdf}
+            onClick={() => {
+              void exportDiaryPdf(diary)
+                .then(() => toast.success(he.manager.panel.exportPdfDone))
+                .catch(() => toast.error(he.manager.panel.exportPdfFailed))
+            }}
+          >
+            <MenuRow icon={FileText} label={he.manager.panel.exportPdf} />
+          </DropdownMenuItem>
+          {diary.status === "pending" ? (
+            <DropdownMenuItem
+              className="rounded-md px-3 py-2.5"
+              label={he.manager.panel.submitDiary}
+              onClick={() => {
+                if (!canSubmit) {
+                  setShowMissing(true)
+                  return
+                }
+                setShowMissing(false)
+                setConfirm("submit")
+              }}
+            >
+              <MenuRow icon={CheckCircle2} label={he.manager.panel.submitDiary} />
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            className="rounded-md px-3 py-2.5"
+            label={he.manager.panel.cancelDiary}
+            disabled={diary.status === "cancelled"}
+            onClick={() => setConfirm("cancel")}
+          >
+            <MenuRow icon={XCircle} label={he.manager.panel.cancelDiary} />
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="rounded-md px-3 py-2.5"
+            label={he.manager.panel.deleteDiary}
+            variant="destructive"
+            onClick={() => setConfirm("delete")}
+          >
+            <MenuRow icon={Trash2} label={he.manager.panel.deleteDiary} />
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -379,16 +415,67 @@ function DiaryBody({
         <div className="shrink-0 px-4 py-3">
           <PanelHeader title={title} diary={diary} menu={headerActions} />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div
+          className={cn(
+            "min-h-0 flex-1 overflow-y-auto px-4 py-3",
+            showMissing && !editing
+              ? "pb-[max(8rem,calc(7rem+env(safe-area-inset-bottom)))]"
+              : "pb-4"
+          )}
+        >
           <DiaryView
             db={db}
             diary={diary}
             draft={editing ? draft : null}
             onDraftChange={setDraft}
+            missingFields={highlightedMissing}
           />
           {error ? <p className="mt-3 text-sm text-muted-foreground">{he.manager.invalid}</p> : null}
         </div>
+        {editing ? (
+          <div className="shrink-0 border-t border-border/60 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+            <div className="flex w-full gap-2">
+              <Button
+                type="button"
+                size="default"
+                variant="outline"
+                className="h-10 flex-1 px-2"
+                onClick={exitEdit}
+              >
+                {he.manager.panel.cancelEdit}
+              </Button>
+              <Button type="button" size="default" className="h-10 flex-1 px-2" onClick={save}>
+                {he.manager.panel.saveEdit}
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </div>
+
+      {showMissing && !confirm && !editing && highlightedMissing.length > 0 ? (
+        <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-red-200 border-b-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
+          <div className="mb-3 flex items-center" style={{ gap: 10 }}>
+            <span
+              className="inline-block shrink-0 rounded-full"
+              style={{ width: 8, height: 8, backgroundColor: "#ef4444" }}
+              aria-hidden
+            />
+            <p className="text-sm font-medium leading-5" style={{ color: "#dc2626" }}>
+              {he.manager.panel.submitIncomplete}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="default"
+            variant="outline"
+            className="h-10 w-full"
+            onClick={() => setShowMissing(false)}
+          >
+            {he.manager.panel.abortAction}
+          </Button>
+        </div>
+      ) : null}
 
       {confirm ? (
         <>
@@ -401,10 +488,18 @@ function DiaryBody({
           <div className="absolute inset-x-0 bottom-0 z-30 animate-in slide-in-from-bottom-4 fade-in duration-200 rounded-t-xl border border-border/50 border-b-0 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.12)]">
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/25" aria-hidden />
             <p className="mb-1 text-sm font-medium text-foreground">
-              {confirm === "delete" ? he.manager.panel.deleteDiary : he.manager.panel.cancelDiary}
+              {confirm === "delete"
+                ? he.manager.panel.deleteDiary
+                : confirm === "submit"
+                  ? he.manager.panel.submitDiary
+                  : he.manager.panel.cancelDiary}
             </p>
             <p className="mb-4 text-sm leading-5 text-muted-foreground">
-              {confirm === "delete" ? he.manager.panel.deleteConfirm : he.manager.panel.cancelConfirm}
+              {confirm === "delete"
+                ? he.manager.panel.deleteConfirm
+                : confirm === "submit"
+                  ? he.manager.panel.submitConfirm
+                  : he.manager.panel.cancelConfirm}
             </p>
             <div className="flex w-full gap-2">
               <Button
@@ -417,7 +512,11 @@ function DiaryBody({
                 {he.manager.panel.abortAction}
               </Button>
               <Button type="button" size="default" className="h-10 w-[70%] px-2" onClick={runConfirm}>
-                {confirm === "delete" ? he.manager.panel.deleteAction : he.manager.panel.cancelAction}
+                {confirm === "delete"
+                  ? he.manager.panel.deleteAction
+                  : confirm === "submit"
+                    ? he.manager.panel.submitAction
+                    : he.manager.panel.cancelAction}
               </Button>
             </div>
           </div>
@@ -432,12 +531,15 @@ function DiaryView({
   diary,
   draft,
   onDraftChange,
+  missingFields = [],
 }: {
   db: MockDb
   diary: PanelDiary
   draft: PanelDraft | null
   onDraftChange: (draft: PanelDraft) => void
+  missingFields?: DiarySubmitField[]
 }) {
+  const missing = new Set(missingFields)
   const editing = draft !== null
   const [textField, setTextField] = useState<TextField>(null)
   const companyId = draft?.companyId ?? diary.companyId
@@ -451,6 +553,7 @@ function DiaryView({
   const items = draft?.items ?? diary.items.map((item) => ({
     id: item.id,
     componentId: item.componentId,
+    domainId: item.domainId,
     domainName: item.domainName,
     componentName: item.componentName,
     unit: item.unit,
@@ -466,12 +569,8 @@ function DiaryView({
   const teamLeaderName = findUser(db, teamLeaderId)?.fullName ?? diary.teamLeaderName
 
   const companies = db.companies.filter((item) => item.isActive || item.id === companyId)
-  const customers = db.customers.filter(
-    (item) => (item.isActive || item.id === customerId) && (!companyId || item.companyId === companyId || item.id === customerId)
-  )
-  const sites = db.sites.filter(
-    (item) => (item.isActive || item.id === siteId) && (!customerId || item.customerId === customerId || item.id === siteId)
-  )
+  const customers = db.customers.filter((item) => item.isActive || item.id === customerId)
+  const sites = db.sites.filter((item) => item.isActive || item.id === siteId)
   const leaders = db.users.filter(
     (user) => user.role === "teamLeader" && (user.isActive || user.id === teamLeaderId)
   )
@@ -479,11 +578,12 @@ function DiaryView({
     .filter((item) => item.isActive || checkedIds.includes(item.id))
     .sort((a, b) => a.sortOrder - b.sortOrder)
   const domains = activeDomainsFrom(db)
-  const allComponents = domains.flatMap((domain) =>
+  const allComponents: ComponentOption[] = domains.flatMap((domain) =>
     domain.components.map((component) => ({
       id: component.id,
       name: component.name,
       unit: component.unit,
+      domainId: domain.id,
       domainName: domain.name,
     }))
   )
@@ -507,6 +607,7 @@ function DiaryView({
           label={he.manager.dashboard.columns.company}
           display={companyName}
           value={companyId}
+          missing={missing.has("company")}
           options={companies.map((item) => ({ value: item.id, label: item.name }))}
           onChange={(value) => update({ companyId: value })}
         />
@@ -516,6 +617,7 @@ function DiaryView({
           label={he.manager.dashboard.columns.customer}
           display={customerName}
           value={customerId}
+          missing={missing.has("customer")}
           options={customers.map((item) => ({ value: item.id, label: item.name }))}
           onChange={(value) => update({ customerId: value })}
         />
@@ -525,6 +627,7 @@ function DiaryView({
           label={he.manager.dashboard.columns.site}
           display={siteName}
           value={siteId}
+          missing={missing.has("site")}
           options={sites.map((item) => ({ value: item.id, label: item.name }))}
           onChange={(value) => update({ siteId: value })}
         />
@@ -535,6 +638,7 @@ function DiaryView({
           label={he.manager.diaries.project}
           value={projectName || "—"}
           draftValue={projectName}
+          missing={missing.has("project")}
           onActivate={() => setTextField("project")}
           onChange={(value) => update({ projectName: value })}
           onDone={() => setTextField(null)}
@@ -546,6 +650,7 @@ function DiaryView({
           label={he.manager.dashboard.columns.subSite}
           value={subSiteName}
           draftValue={subSiteName}
+          missing={missing.has("subSite")}
           onActivate={() => setTextField("subSite")}
           onChange={(value) => update({ subSiteName: value })}
           onDone={() => setTextField(null)}
@@ -556,6 +661,7 @@ function DiaryView({
           label={he.manager.dashboard.columns.leader}
           display={teamLeaderName}
           value={teamLeaderId}
+          missing={missing.has("leader")}
           options={leaders.map((item) => ({ value: item.id, label: item.fullName }))}
           onChange={(value) => update({ teamLeaderId: value })}
         />
@@ -567,6 +673,7 @@ function DiaryView({
           value={<BidiText>{workOrderNumber}</BidiText>}
           draftValue={workOrderNumber}
           dir="ltr"
+          missing={missing.has("workOrder")}
           onActivate={() => setTextField("workOrder")}
           onChange={(value) => update({ workOrderNumber: value })}
           onDone={() => setTextField(null)}
@@ -583,8 +690,10 @@ function DiaryView({
       <InstallationsTable
         editing={editing}
         items={items}
+        domains={domains}
         components={allComponents}
         textField={activeTextField}
+        missing={missing.has("items")}
         onActivateQty={(id) => setTextField(`qty:${id}`)}
         onDoneQty={() => setTextField(null)}
         onChange={(next) => update({ items: next })}
@@ -600,13 +709,53 @@ function DiaryView({
       <SectionDivider />
       <NotesSection
         editing={editing}
-        active={activeTextField === "notes"}
         notes={notes}
-        onActivate={() => setTextField("notes")}
         onChange={(value) => update({ notes: value })}
-        onDone={() => setTextField(null)}
       />
     </div>
+  )
+}
+
+function MissingDot({ show, size = 12 }: { show?: boolean; size?: number }) {
+  if (!show) return null
+  return (
+    <span
+      className="inline-block shrink-0 rounded-full"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: "#ef4444",
+        boxShadow: "0 0 0 2px rgba(239, 68, 68, 0.2)",
+      }}
+      title={he.manager.panel.submitIncomplete}
+      aria-label={he.manager.panel.submitIncomplete}
+    />
+  )
+}
+
+function FieldLead({
+  icon: Icon,
+  missing,
+  iconClassName = "size-3.5",
+}: {
+  icon: LucideIcon
+  missing?: boolean
+  iconClassName?: string
+}) {
+  return (
+    <span className="inline-flex shrink-0 items-center" style={{ gap: 6 }}>
+      <MissingDot show={missing} size={11} />
+      <Icon className={cn("shrink-0", iconClassName)} aria-hidden />
+    </span>
+  )
+}
+
+function MenuRow({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-center" style={{ gap: 12 }}>
+      <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="whitespace-nowrap">{label}</span>
+    </span>
   )
 }
 
@@ -616,6 +765,7 @@ function FactSelect({
   label,
   display,
   value,
+  missing,
   options,
   onChange,
 }: {
@@ -624,21 +774,37 @@ function FactSelect({
   label: string
   display: string
   value: string
+  missing?: boolean
   options: Array<{ value: string; label: string }>
   onChange: (value: string) => void
 }) {
   const body = (
     <>
-      <div className="mb-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <Icon className="size-3 shrink-0" aria-hidden />
+      <div className="mb-0.5 flex items-center text-[11px] text-muted-foreground" style={{ gap: 8 }}>
+        <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
         <span className="truncate">{label}</span>
       </div>
-      <p className="truncate ps-4 text-sm font-medium">{display}</p>
+      <p
+        className="truncate ps-7 text-sm font-medium"
+        style={missing ? { color: "#dc2626" } : undefined}
+      >
+        {display}
+      </p>
     </>
   )
-  if (!editing) return <li className="min-w-0">{body}</li>
+  if (!editing) {
+    return (
+      <li
+        data-missing={missing ? "true" : undefined}
+        className={cn("min-w-0", missing && "rounded-md p-1")}
+        style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
+      >
+        {body}
+      </li>
+    )
+  }
   return (
-    <li className="min-w-0">
+    <li data-missing={missing ? "true" : undefined} className="min-w-0">
       <DropdownMenu>
         <DropdownMenuTrigger className={editTriggerClass}>{body}</DropdownMenuTrigger>
         <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-44 rounded-md p-1.5">
@@ -663,6 +829,7 @@ function FactText({
   value,
   draftValue,
   dir,
+  missing,
   onActivate,
   onChange,
   onDone,
@@ -674,6 +841,7 @@ function FactText({
   value: ReactNode
   draftValue: string
   dir?: "ltr" | "rtl"
+  missing?: boolean
   onActivate: () => void
   onChange: (value: string) => void
   onDone: () => void
@@ -683,30 +851,44 @@ function FactText({
     if (active) inputRef.current?.focus()
   }, [active])
 
+  const labelRow = (
+    <div className="mb-0.5 flex items-center text-[11px] text-muted-foreground" style={{ gap: 8 }}>
+      <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
+      <span className="truncate">{label}</span>
+    </div>
+  )
+
   if (!editing) {
     return (
-      <li className="min-w-0">
-        <div className="mb-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Icon className="size-3 shrink-0" aria-hidden />
-          <span className="truncate">{label}</span>
-        </div>
-        <p className="truncate ps-4 text-sm font-medium">{value}</p>
+      <li
+        data-missing={missing ? "true" : undefined}
+        className={cn("min-w-0", missing && "rounded-md p-1")}
+        style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
+      >
+        {labelRow}
+        <p
+          className="truncate ps-7 text-sm font-medium"
+          style={missing ? { color: "#dc2626" } : undefined}
+        >
+          {value}
+        </p>
       </li>
     )
   }
 
   if (active) {
     return (
-      <li className="min-w-0">
-        <div className="mb-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Icon className="size-3 shrink-0" aria-hidden />
-          <span className="truncate">{label}</span>
-        </div>
+      <li
+        data-missing={missing ? "true" : undefined}
+        className={cn("min-w-0", missing && "rounded-md p-1")}
+        style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
+      >
+        {labelRow}
         <Input
           ref={inputRef}
           dir={dir}
           value={draftValue}
-          className="ms-4 h-7 w-[calc(100%-1rem)] border-0 bg-muted/40 px-1.5 text-sm font-medium shadow-none md:text-sm"
+          className="ms-7 h-7 w-[calc(100%-1.75rem)] border-0 bg-muted/40 px-1.5 text-sm font-medium shadow-none md:text-sm"
           onChange={(event) => onChange(event.target.value)}
           onBlur={onDone}
           onKeyDown={(event) => {
@@ -720,11 +902,8 @@ function FactText({
   return (
     <li className="min-w-0">
       <button type="button" className={editTriggerClass} onClick={onActivate}>
-        <div className="mb-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Icon className="size-3 shrink-0" aria-hidden />
-          <span className="truncate">{label}</span>
-        </div>
-        <p className="truncate ps-4 text-start text-sm font-medium">{value || "—"}</p>
+        {labelRow}
+        <p className="truncate ps-7 text-start text-sm font-medium">{value || "—"}</p>
       </button>
     </li>
   )
@@ -740,79 +919,78 @@ function WorkersSection({
   onChange: (workers: PanelDraft["workers"]) => void
 }) {
   const names = workers.map((worker) => worker.fullName.trim()).filter(Boolean)
-  const [open, setOpen] = useState(false)
-  const menuOpen = editing && open
-
-  const content =
-    names.length === 0 ? (
-      <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyWorkers}</p>
-    ) : (
-      <p className="text-sm leading-5">
-        {names.map((name, index) => (
-          <span key={`${name}-${index}`}>
-            {index > 0 ? <span className="mx-1.5 text-muted-foreground">·</span> : null}
-            {name}
-          </span>
-        ))}
-      </p>
-    )
+  const rows = workers.length > 0 ? workers : [{ id: "__empty__", fullName: "" }]
 
   return (
     <section className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <SectionTitle icon={Users}>{he.leader.form.workersTitle}</SectionTitle>
         {editing ? (
-          <DropdownMenu open={menuOpen} onOpenChange={setOpen}>
-            <DropdownMenuTrigger className={sectionAddClass}>
-              <Plus className="size-3.5" aria-hidden />
-              <span className="sr-only">{he.leader.form.addWorker}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="w-72 rounded-md p-2">
-              <div className="flex flex-col gap-2">
-                {(workers.length > 0 ? workers : [{ id: crypto.randomUUID(), fullName: "" }]).map((worker) => (
-                  <div key={worker.id} className="flex items-center gap-1.5">
-                    <Input
-                      value={worker.fullName}
-                      placeholder={he.leader.form.workerName}
-                      className="h-9 text-sm md:text-sm"
-                      onChange={(event) => {
-                        const exists = workers.some((item) => item.id === worker.id)
-                        const next = exists
-                          ? workers.map((item) =>
-                              item.id === worker.id ? { ...item, fullName: event.target.value } : item
-                            )
-                          : [...workers, { ...worker, fullName: event.target.value }]
-                        onChange(next)
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="shrink-0"
-                      onClick={() => onChange(workers.filter((item) => item.id !== worker.id))}
-                    >
-                      <X className="size-3.5" />
-                      <span className="sr-only">{he.leader.remove}</span>
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="self-start"
-                  onClick={() => onChange([...workers, { id: crypto.randomUUID(), fullName: "" }])}
-                >
-                  <Plus className="size-3.5" />
-                  {he.leader.form.addWorker}
-                </Button>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <button
+            type="button"
+            className={sectionAddClass}
+            aria-label={he.leader.form.addWorker}
+            onClick={() => {
+              if (workers.length === 0) {
+                onChange([
+                  { id: crypto.randomUUID(), fullName: "" },
+                  { id: crypto.randomUUID(), fullName: "" },
+                ])
+                return
+              }
+              onChange([...workers, { id: crypto.randomUUID(), fullName: "" }])
+            }}
+          >
+            <Plus className="size-3.5" aria-hidden />
+          </button>
         ) : null}
       </div>
-      {content}
+      {editing ? (
+        <div className="flex flex-col gap-2">
+          {rows.map((worker) => (
+            <div key={worker.id} className="flex items-center gap-1.5">
+              <Input
+                value={worker.fullName}
+                placeholder={he.leader.form.workerName}
+                className="h-9 text-sm md:text-sm"
+                onChange={(event) => {
+                  if (workers.length === 0) {
+                    onChange([{ id: crypto.randomUUID(), fullName: event.target.value }])
+                    return
+                  }
+                  onChange(
+                    workers.map((item) =>
+                      item.id === worker.id ? { ...item, fullName: event.target.value } : item
+                    )
+                  )
+                }}
+              />
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0"
+                disabled={workers.length === 0 && !worker.fullName}
+                onClick={() => onChange(workers.filter((item) => item.id !== worker.id))}
+              >
+                <X className="size-3.5" />
+                <span className="sr-only">{he.leader.remove}</span>
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : names.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyWorkers}</p>
+      ) : (
+        <p className="text-sm leading-5">
+          {names.map((name, index) => (
+            <span key={`${name}-${index}`}>
+              {index > 0 ? <span className="mx-1.5 text-muted-foreground">·</span> : null}
+              {name}
+            </span>
+          ))}
+        </p>
+      )}
     </section>
   )
 }
@@ -820,55 +998,70 @@ function WorkersSection({
 function InstallationsTable({
   editing,
   items,
+  domains,
   components,
   textField,
+  missing,
   onActivateQty,
   onDoneQty,
   onChange,
 }: {
   editing: boolean
   items: DraftItem[]
-  components: Array<{ id: string; name: string; unit: string; domainName: string }>
+  domains: DomainOption[]
+  components: ComponentOption[]
   textField: TextField
+  missing?: boolean
   onActivateQty: (id: string) => void
   onDoneQty: () => void
   onChange: (items: DraftItem[]) => void
 }) {
+  const addDomainRow = (domain: DomainOption) => {
+    onChange([
+      ...items,
+      {
+        id: crypto.randomUUID(),
+        componentId: "",
+        domainId: domain.id,
+        domainName: domain.name,
+        componentName: "",
+        unit: "",
+        quantity: "1",
+      },
+    ])
+  }
+
   return (
-    <section className="flex flex-col gap-1.5">
+    <section
+      data-missing={missing ? "true" : undefined}
+      className={cn("flex flex-col gap-2", missing && "rounded-md px-2 py-2")}
+      style={
+        missing
+          ? {
+              boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.45)",
+              backgroundColor: "rgba(239, 68, 68, 0.04)",
+            }
+          : undefined
+      }
+    >
       <div className="flex items-center justify-between gap-2">
-        <SectionTitle icon={Cable}>{he.leader.form.workTitle}</SectionTitle>
+        <SectionTitle icon={Cable} missing={missing}>
+          {he.leader.form.workTitle}
+        </SectionTitle>
         {editing ? (
           <DropdownMenu>
             <DropdownMenuTrigger className={sectionAddClass}>
               <Plus className="size-3.5" aria-hidden />
               <span className="sr-only">{he.leader.form.addItem}</span>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="max-h-52 min-w-52 rounded-md p-1.5">
-              {components.map((component) => (
+            <DropdownMenuContent align="end" sideOffset={6} className="w-auto max-h-52 min-w-44 rounded-md p-1.5">
+              {domains.map((domain) => (
                 <DropdownMenuItem
-                  key={component.id}
+                  key={domain.id}
                   className="rounded-md px-3 py-2"
-                  onClick={() => {
-                    const existing = items.find((item) => item.componentId === component.id)
-                    if (existing) return
-                    onChange([
-                      ...items,
-                      {
-                        id: crypto.randomUUID(),
-                        componentId: component.id,
-                        domainName: component.domainName,
-                        componentName: component.name,
-                        unit: component.unit,
-                        quantity: "1",
-                      },
-                    ])
-                  }}
+                  onClick={() => addDomainRow(domain)}
                 >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{component.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">{component.domainName}</span>
-                  </span>
+                  {domain.name}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -876,40 +1069,12 @@ function InstallationsTable({
         ) : null}
       </div>
       {items.length === 0 ? (
-        editing ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(editTriggerClass, "text-start")}>
-              <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyItems}</p>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-52 rounded-md p-1.5">
-              {components.map((component) => (
-                <DropdownMenuItem
-                  key={component.id}
-                  className="rounded-md px-3 py-2"
-                  onClick={() => {
-                    onChange([
-                      {
-                        id: crypto.randomUUID(),
-                        componentId: component.id,
-                        domainName: component.domainName,
-                        componentName: component.name,
-                        unit: component.unit,
-                        quantity: "1",
-                      },
-                    ])
-                  }}
-                >
-                  <span className="flex min-w-0 flex-col">
-                    <span className="truncate">{component.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">{component.domainName}</span>
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyItems}</p>
-        )
+        <p
+          className={cn("ps-7 text-xs", missing ? "font-medium" : "text-muted-foreground")}
+          style={missing ? { color: "#dc2626" } : undefined}
+        >
+          {he.leader.form.readOnlyItems}
+        </p>
       ) : (
         <div className="overflow-hidden rounded-sm border border-border/60">
           <table className="w-full table-fixed border-collapse text-xs">
@@ -930,31 +1095,42 @@ function InstallationsTable({
             <tbody>
               {items.map((item) => {
                 const qtyActive = textField === `qty:${item.id}`
+                const domainComponents = components.filter((entry) => entry.domainId === item.domainId)
                 return (
                   <tr key={item.id} className="group/row border-b border-border/40 last:border-b-0">
                     <td className="truncate px-2.5 py-1.5">
                       {editing ? (
-                        <ComponentPicker
-                          item={item}
-                          components={components}
-                          onPick={(component) =>
-                            onChange(
-                              items.map((entry) =>
-                                entry.id === item.id
-                                  ? {
-                                      ...entry,
-                                      componentId: component.id,
-                                      domainName: component.domainName,
-                                      componentName: component.name,
-                                      unit: component.unit,
-                                    }
-                                  : entry
-                              )
-                            )
-                          }
-                        >
-                          <span className="block truncate">{item.domainName}</span>
-                        </ComponentPicker>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className={editTriggerClass}>
+                            <span className="block truncate">{item.domainName}</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-44 rounded-md p-1.5">
+                            {domains.map((domain) => (
+                              <DropdownMenuItem
+                                key={domain.id}
+                                className="rounded-md px-3 py-2"
+                                onClick={() =>
+                                  onChange(
+                                    items.map((entry) =>
+                                      entry.id === item.id
+                                        ? {
+                                            ...entry,
+                                            domainId: domain.id,
+                                            domainName: domain.name,
+                                            componentId: "",
+                                            componentName: "",
+                                            unit: "",
+                                          }
+                                        : entry
+                                    )
+                                  )
+                                }
+                              >
+                                {domain.name}
+                              </DropdownMenuItem>
+                            ))}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       ) : (
                         item.domainName
                       )}
@@ -964,7 +1140,7 @@ function InstallationsTable({
                         <>
                           <ComponentPicker
                             item={item}
-                            components={components}
+                            components={domainComponents}
                             onPick={(component) =>
                               onChange(
                                 items.map((entry) =>
@@ -972,6 +1148,7 @@ function InstallationsTable({
                                     ? {
                                         ...entry,
                                         componentId: component.id,
+                                        domainId: component.domainId,
                                         domainName: component.domainName,
                                         componentName: component.name,
                                         unit: component.unit,
@@ -980,9 +1157,7 @@ function InstallationsTable({
                                 )
                               )
                             }
-                          >
-                            <span className="block truncate">{item.componentName}</span>
-                          </ComponentPicker>
+                          />
                           <button
                             type="button"
                             className="absolute end-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover/row:opacity-100"
@@ -1021,7 +1196,7 @@ function InstallationsTable({
                         formatQuantity(Number(item.quantity) || 0)
                       )}
                     </td>
-                    <td className="truncate px-2.5 py-1.5">{item.unit}</td>
+                    <td className="truncate px-2.5 py-1.5">{item.unit || "—"}</td>
                   </tr>
                 )
               })}
@@ -1037,33 +1212,38 @@ function ComponentPicker({
   item,
   components,
   onPick,
-  children,
 }: {
   item: DraftItem
-  components: Array<{ id: string; name: string; unit: string; domainName: string }>
-  onPick: (component: { id: string; name: string; unit: string; domainName: string }) => void
-  children: ReactNode
+  components: ComponentOption[]
+  onPick: (component: ComponentOption) => void
 }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={editTriggerClass}>{children}</DropdownMenuTrigger>
+      <DropdownMenuTrigger className={editTriggerClass}>
+        {item.componentName ? (
+          <span className="block truncate">{item.componentName}</span>
+        ) : (
+          <span className="block truncate text-muted-foreground">{he.leader.form.chooseComponent}</span>
+        )}
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-52 rounded-md p-1.5">
-        <DropdownMenuRadioGroup
-          value={item.componentId}
-          onValueChange={(value) => {
-            const component = components.find((entry) => entry.id === value)
-            if (component) onPick(component)
-          }}
-        >
-          {components.map((component) => (
-            <DropdownMenuRadioItem key={component.id} value={component.id} className="rounded-md px-3 py-2">
-              <span className="flex min-w-0 flex-col">
+        {components.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-muted-foreground">{he.leader.form.chooseDomain}</p>
+        ) : (
+          <DropdownMenuRadioGroup
+            value={item.componentId}
+            onValueChange={(value) => {
+              const component = components.find((entry) => entry.id === value)
+              if (component) onPick(component)
+            }}
+          >
+            {components.map((component) => (
+              <DropdownMenuRadioItem key={component.id} value={component.id} className="rounded-md px-3 py-2">
                 <span className="truncate">{component.name}</span>
-                <span className="truncate text-xs text-muted-foreground">{component.domainName}</span>
-              </span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -1163,24 +1343,13 @@ function SafetySection({
 
 function NotesSection({
   editing,
-  active,
   notes,
-  onActivate,
   onChange,
-  onDone,
 }: {
   editing: boolean
-  active: boolean
   notes: string
-  onActivate: () => void
   onChange: (value: string) => void
-  onDone: () => void
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null)
-  useEffect(() => {
-    if (active) ref.current?.focus()
-  }, [active])
-
   return (
     <section className="flex flex-col gap-1.5">
       <SectionTitle icon={MessageSquareText}>{he.leader.form.notesTitle}</SectionTitle>
@@ -1190,24 +1359,14 @@ function NotesSection({
         ) : (
           <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyNotes}</p>
         )
-      ) : active ? (
+      ) : (
         <textarea
-          ref={ref}
           value={notes}
           maxLength={2000}
           placeholder={he.leader.form.notesPlaceholder}
-          className="min-h-20 w-full rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="min-h-24 w-full rounded-md border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           onChange={(event) => onChange(event.target.value)}
-          onBlur={onDone}
         />
-      ) : (
-        <button type="button" className={editTriggerClass} onClick={onActivate}>
-          {notes.trim() ? (
-            <p className="text-sm leading-5">{notes.trim()}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyNotes}</p>
-          )}
-        </button>
       )}
     </section>
   )
@@ -1215,15 +1374,20 @@ function NotesSection({
 
 function SectionTitle({
   icon: Icon,
+  missing,
   children,
 }: {
   icon: LucideIcon
+  missing?: boolean
   children: ReactNode
 }) {
   return (
-    <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground">
-      <Icon className="size-3" aria-hidden />
-      {children}
+    <h3
+      className="flex items-center text-[11px] font-semibold tracking-wide text-muted-foreground"
+      style={{ gap: 8 }}
+    >
+      <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
+      <span>{children}</span>
     </h3>
   )
 }

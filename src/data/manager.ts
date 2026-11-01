@@ -431,6 +431,61 @@ export function markDiaryCancelled(
   }
 }
 
+export type DiarySubmitField =
+  | "company"
+  | "customer"
+  | "site"
+  | "project"
+  | "subSite"
+  | "leader"
+  | "workOrder"
+  | "items"
+
+/** Essential fields required before a pending diary can become submitted. */
+export function diarySubmitMissing(detail: {
+  companyId: string
+  customerId: string
+  siteId: string
+  projectName: string
+  subSiteName: string
+  teamLeaderId: string
+  workOrderNumber: string
+  items: { componentId: string }[]
+}): DiarySubmitField[] {
+  const missing: DiarySubmitField[] = []
+  if (!detail.companyId) missing.push("company")
+  if (!detail.customerId) missing.push("customer")
+  if (!detail.siteId) missing.push("site")
+  if (!detail.projectName.trim()) missing.push("project")
+  if (!detail.subSiteName.trim()) missing.push("subSite")
+  if (!detail.teamLeaderId) missing.push("leader")
+  if (!detail.workOrderNumber.trim()) missing.push("workOrder")
+  if (!detail.items.some((item) => Boolean(item.componentId))) missing.push("items")
+  return missing
+}
+
+export function diaryReadyToSubmit(
+  detail: Parameters<typeof diarySubmitMissing>[0]
+): boolean {
+  return diarySubmitMissing(detail).length === 0
+}
+
+export function markDiarySubmitted(
+  db: MockDb,
+  diaryId: string,
+  submittedAt = new Date().toISOString()
+): MockDb | null {
+  const detail = getManagerDiary(db, diaryId)
+  if (!detail || detail.status !== "pending") return null
+  if (!diaryReadyToSubmit(detail)) return null
+  return {
+    ...db,
+    diaries: db.diaries.map((diary) =>
+      diary.id === diaryId ? { ...diary, status: "submitted", submittedAt } : diary
+    ),
+  }
+}
+
 export function cancelDiary(db: MockDb, diaryId: string): MockDb | null {
   const current = db.diaries.find((diary) => diary.id === diaryId)
   if (!current || current.status !== "pending") return null
