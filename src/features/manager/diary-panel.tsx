@@ -21,8 +21,8 @@ import {
   XCircle,
   type LucideIcon,
 } from "lucide-react"
-import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -132,7 +132,9 @@ export function DiaryPanel({
     ? `${he.manager.panel.workDiaryForDate} ${formatWorkDate(diary.workDate)}`
     : he.manager.dashboard.title
   const body = diary ? (
-    <DiaryBody key={diary.id} db={db} diary={diary} title={title} onClose={() => onOpenChange(false)} />
+    <PanelNoticeProvider key={diary.id}>
+      <DiaryBody db={db} diary={diary} title={title} onClose={() => onOpenChange(false)} />
+    </PanelNoticeProvider>
   ) : null
   if (desktop) {
     return (
@@ -246,6 +248,7 @@ function DiaryBody({
   title: string
   onClose: () => void
 }) {
+  const notice = usePanelNotice()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<PanelDraft | null>(null)
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null)
@@ -266,7 +269,7 @@ function DiaryBody({
     if (confirm === "delete") {
       const result = deleteManagerDiary(diary.id)
       if (!result.ok) return
-      toast(he.manager.panel.deleted)
+      notice.show(he.manager.panel.deleted)
       onClose()
       return
     }
@@ -278,13 +281,13 @@ function DiaryBody({
         return
       }
       setShowMissing(false)
-      toast.success(he.manager.panel.submitted)
+      notice.success(he.manager.panel.submitted)
       return
     }
     const result = markManagerDiaryCancelled(diary.id)
     setConfirm(null)
     if (!result.ok) return
-    toast(he.manager.panel.cancelled)
+    notice.show(he.manager.panel.cancelled)
   }
 
   const save = () => {
@@ -320,7 +323,7 @@ function DiaryBody({
     )
     setError(!result.ok)
     if (result.ok) {
-      toast(he.manager.panel.saved)
+      notice.show(he.manager.panel.saved)
       setEditing(false)
       setDraft(null)
     }
@@ -360,8 +363,8 @@ function DiaryBody({
             label={he.manager.panel.exportPdf}
             onClick={() => {
               void exportDiaryPdf(diary)
-                .then(() => toast.success(he.manager.panel.exportPdfDone))
-                .catch(() => toast.error(he.manager.panel.exportPdfFailed))
+                .then(() => notice.success(he.manager.panel.exportPdfDone))
+                .catch(() => notice.error(he.manager.panel.exportPdfFailed))
             }}
           >
             <MenuRow icon={FileText} label={he.manager.panel.exportPdf} />
@@ -404,7 +407,7 @@ function DiaryBody({
   )
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+    <>
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col transition-[filter,opacity] duration-200",
@@ -432,6 +435,7 @@ function DiaryBody({
           />
           {error ? <p className="mt-3 text-sm text-muted-foreground">{he.manager.invalid}</p> : null}
         </div>
+        <PanelNoticeBanner />
         {editing ? (
           <div className="shrink-0 border-t border-border/60 bg-background px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
             <div className="flex w-full gap-2">
@@ -522,7 +526,7 @@ function DiaryBody({
           </div>
         </>
       ) : null}
-    </div>
+    </>
   )
 }
 
@@ -716,7 +720,7 @@ function DiaryView({
   )
 }
 
-function MissingDot({ show, size = 12 }: { show?: boolean; size?: number }) {
+function MissingDot({ show, size = 7 }: { show?: boolean; size?: number }) {
   if (!show) return null
   return (
     <span
@@ -744,7 +748,7 @@ function FieldLead({
 }) {
   return (
     <span className="inline-flex shrink-0 items-center" style={{ gap: 6 }}>
-      <MissingDot show={missing} size={11} />
+      <MissingDot show={missing} size={7} />
       <Icon className={cn("shrink-0", iconClassName)} aria-hidden />
     </span>
   )

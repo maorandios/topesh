@@ -1,5 +1,6 @@
 "use client"
 
+import { Flame } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { AppLink } from "@/components/shell/app-link"
 import { isNavActive, leaderNav, managerNav, type NavItem } from "@/components/shell/nav"
@@ -16,8 +17,9 @@ export function SideNav({ variant }: { variant: "manager" | "leader" }) {
       className="app-chrome sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-e border-border bg-card lg:flex"
       style={{ viewTransitionName: "app-sidebar" }}
     >
-      <div className="flex h-14 items-center px-4 text-sm font-semibold">
-        {he.appName}
+      <div className="flex h-14 items-center gap-2 px-4 text-sm font-semibold">
+        <Flame className="size-5 shrink-0 text-foreground" aria-hidden />
+        <span className="truncate">{he.appName}</span>
       </div>
       <nav className="flex flex-1 flex-col gap-1 px-3 pb-4">
         {items.map((item) => {

@@ -22,12 +22,12 @@ const googleSans = localFont({
 })
 
 export const metadata: Metadata = {
-  title: "יומן עבודה",
+  title: "טופ-אש",
   description: "יומן עבודה תפעולי לצוותי התקנה",
-  applicationName: "יומן עבודה",
+  applicationName: "טופ-אש",
   appleWebApp: {
     capable: true,
-    title: "יומן עבודה",
+    title: "טופ-אש",
     statusBarStyle: "default",
   },
   icons: {

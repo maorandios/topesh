@@ -849,7 +849,7 @@ function cleanAssignment(
   if (!site.isActive && site.id !== allowInactive.siteId) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) return null
   if (!subSiteName || subSiteName.length > NAME_LIMIT) return null
-  if (projectName.length > NAME_LIMIT) return null
+  if (!projectName || projectName.length > NAME_LIMIT) return null
   if (!workOrderNumber || workOrderNumber.length > 40) return null
   return {
     teamLeaderId: leader.id,

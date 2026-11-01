@@ -6,6 +6,7 @@ import {
   History,
   LayoutDashboard,
   Boxes,
+  Settings,
 } from "lucide-react"
 import { he } from "@/i18n/he"
 
@@ -16,19 +17,13 @@ export type NavItem = {
   icon: LucideIcon
 }
 
-/** Exactly five Manager navigation items (Phase 3.6). */
+/** Manager primary navigation. */
 export const managerNav: NavItem[] = [
   {
     href: "/manager",
     label: he.nav.dashboard,
     shortLabel: he.nav.dashboardShort,
     icon: LayoutDashboard,
-  },
-  {
-    href: "/manager/diaries",
-    label: he.nav.workDiaries,
-    shortLabel: he.nav.workDiariesShort,
-    icon: ClipboardList,
   },
   {
     href: "/manager/organization",
@@ -47,6 +42,12 @@ export const managerNav: NavItem[] = [
     label: he.nav.reports,
     shortLabel: he.nav.reports,
     icon: FileSpreadsheet,
+  },
+  {
+    href: "/manager/settings",
+    label: he.nav.settings,
+    shortLabel: he.nav.settings,
+    icon: Settings,
   },
 ]
 
