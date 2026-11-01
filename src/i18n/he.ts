@@ -142,10 +142,12 @@ export const he = {
       inactive: "מושבת",
       diariesCount: "כמות יומנים",
       add: "+ הוספה",
-      addCard: {
-        label: "פעולה",
-        title: "הוספת רשומה",
-        hint: "יצירת רשומה חדשה בטאב הנוכחי",
+      addTitles: {
+        company: "הוספת חברה",
+        customer: "הוספת לקוח",
+        site: "הוספת אתר",
+        teamLeader: "הוספת ראש צוות",
+        manager: "הוספת מנהל",
       },
       search: "חיפוש",
       deactivate: "השבתה",

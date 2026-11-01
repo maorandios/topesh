@@ -198,8 +198,8 @@ function migrateDiary(
     submittedAt: diary.submittedAt,
     cancelledAt:
       diary.status === "cancelled"
-        ? typeof (diary as { cancelledAt?: string | null }).cancelledAt === "string"
-          ? (diary as { cancelledAt: string }).cancelledAt
+        ? typeof (diary as unknown as { cancelledAt?: string | null }).cancelledAt === "string"
+          ? (diary as unknown as { cancelledAt: string }).cancelledAt
           : diary.createdAt
         : null,
   }

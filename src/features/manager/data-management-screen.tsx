@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useSyncExternalStore, type ReactNode } from "react"
+import { createElement, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   Building2,
@@ -78,6 +78,13 @@ type Editor =
       email: string
     }
 
+type TableRow = {
+  id: string
+  cells: string[]
+  onEdit: () => void
+  onDelete: () => void
+}
+
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "companies", label: he.manager.organization.tabs.companies },
   { id: "customers", label: he.manager.organization.tabs.customers },
@@ -95,8 +102,8 @@ const panelSurfaceStyle = {
   backdropFilter: "blur(16px)",
 } as const
 
-const filterControlClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+const editorInputClass =
+  "h-10 w-full min-w-0 rounded-md border border-border bg-white px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 export function DataManagementScreen() {
   const query = useManagerDb()
@@ -105,8 +112,10 @@ export function DataManagementScreen() {
   const initialTab = parseTab(params.get("tab"))
   const [tab, setTab] = useState<TabId>(initialTab)
   const [search, setSearch] = useState("")
+  const [create, setCreate] = useState<Editor>(() => createBlank(initialTab))
+  const [createError, setCreateError] = useState(false)
   const [editor, setEditor] = useState<Editor | null>(null)
-  const [error, setError] = useState(false)
+  const [editError, setEditError] = useState(false)
   const [deleteId, setDeleteId] = useState<{ kind: TabId; id: string } | null>(null)
   const [blockReason, setBlockReason] = useState<DeleteBlockedReason | null>(null)
 
@@ -125,23 +134,32 @@ export function DataManagementScreen() {
   const chooseTab = (next: TabId) => {
     setTab(next)
     setSearch("")
+    setCreate(createBlank(next))
+    setCreateError(false)
     setEditor(null)
+    setEditError(false)
     router.replace(`/manager/organization?tab=${next}`, { scroll: false })
   }
 
-  const openCreate = () => {
-    setError(false)
-    setEditor(createBlank(tab))
+  const saveCreate = () => {
+    const result = persistEditor(create)
+    if (!result.ok) {
+      setCreateError(true)
+      return
+    }
+    setCreateError(false)
+    setBlockReason(null)
+    setCreate(createBlank(tab))
   }
 
-  const save = () => {
+  const saveEdit = () => {
     if (!editor) return
     const result = persistEditor(editor)
     if (!result.ok) {
-      setError(true)
+      setEditError(true)
       return
     }
-    setError(false)
+    setEditError(false)
     setBlockReason(null)
     setEditor(null)
   }
@@ -162,90 +180,94 @@ export function DataManagementScreen() {
 
   return (
     <PageFrame>
-      <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={cn(
-                "pressable flex flex-col gap-3 rounded-md border px-4 py-3.5 text-start transition-colors",
-                tab === item.id
-                  ? "border-foreground bg-card"
-                  : "border-border bg-card hover:bg-muted/40"
-              )}
-              onClick={() => chooseTab(item.id)}
-            >
-              <p className="text-sm text-muted-foreground">{item.label}</p>
-              <p className="text-start text-3xl font-semibold tabular-nums tracking-tight text-foreground">
-                {counts[item.id]}
-              </p>
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    tab === item.id ? "bg-emerald-500" : "bg-muted-foreground/40"
-                  )}
-                  aria-hidden
-                />
-                <span>{item.label}</span>
-              </p>
-            </button>
-          ))}
-          <button
-            type="button"
-            className="pressable flex flex-col gap-3 rounded-md border border-foreground bg-foreground px-4 py-3.5 text-start text-background"
-            onClick={openCreate}
+      <div className="flex w-full flex-col gap-3 px-4 py-4 sm:px-6">
+        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div
+            role="tablist"
+            aria-label={he.manager.organization.title}
+            className="inline-flex min-w-full gap-1 sm:min-w-0"
           >
-            <span className="text-sm text-background/70">{he.manager.organization.addCard.label}</span>
-            <span className="text-3xl font-semibold tracking-tight">{he.manager.organization.addCard.title}</span>
-            <span className="flex items-center gap-2 text-xs text-background/70">
-              <span className="size-1.5 shrink-0 rounded-full bg-emerald-400" aria-hidden />
-              <span>{he.manager.organization.addCard.hint}</span>
-            </span>
-          </button>
+            {tabs.map((item) => {
+              const selected = tab === item.id
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  className={cn(
+                    "pressable inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-colors",
+                    selected
+                      ? "border-foreground bg-muted font-medium text-foreground"
+                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  )}
+                  onClick={() => chooseTab(item.id)}
+                >
+                  <span>{item.label}</span>
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 py-0.5 text-[11px] tabular-nums",
+                      selected ? "bg-background text-foreground" : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    {counts[item.id]}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="flex w-full max-w-4xl flex-col gap-3">
-          <section className="rounded-md border border-border bg-muted/40 px-4 py-3">
-            <FilterField label={he.manager.organization.search} icon={Search}>
+        {blockReason ? (
+          <p className="text-sm text-muted-foreground">{he.manager.organization.deleteBlocked[blockReason]}</p>
+        ) : null}
+
+        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start">
+          <div className="order-2 flex w-full min-w-0 flex-col gap-2 lg:order-1 lg:w-[60%] lg:shrink-0">
+            <div className="relative min-w-0">
+              <Search
+                className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
+                aria-hidden
+              />
               <Input
                 value={search}
                 placeholder={he.manager.organization.search}
-                className={filterControlClass}
+                className="h-9 rounded-md border-border bg-white pe-3 ps-9 text-sm shadow-none md:text-sm"
                 onChange={(event) => setSearch(event.target.value)}
               />
-            </FilterField>
-          </section>
+            </div>
+            <EntityList
+              db={db}
+              tab={tab}
+              search={search}
+              onEdit={(next) => {
+                setEditError(false)
+                setBlockReason(null)
+                setEditor(next)
+              }}
+              onDelete={(kind, id) => {
+                setBlockReason(null)
+                setDeleteId({ kind, id })
+              }}
+            />
+          </div>
 
-          {blockReason ? (
-            <p className="text-sm text-muted-foreground">{he.manager.organization.deleteBlocked[blockReason]}</p>
-          ) : null}
-
-          <EntityList
-            db={db}
-            tab={tab}
-            search={search}
-            onEdit={(next) => {
-              setError(false)
-              setBlockReason(null)
-              setEditor(next)
-            }}
-            onDelete={(kind, id) => {
-              setBlockReason(null)
-              setDeleteId({ kind, id })
-            }}
+          <CreateCard
+            create={create}
+            error={createError}
+            onChange={setCreate}
+            onSave={saveCreate}
           />
         </div>
       </div>
       <EditorPanel
         editor={editor}
-        error={error}
+        error={editError}
         onOpenChange={(open) => {
           if (!open) setEditor(null)
         }}
         onChange={setEditor}
-        onSave={save}
+        onSave={saveEdit}
       />
       <Dialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
         <DialogContent className="rounded-md sm:max-w-md">
@@ -273,25 +295,12 @@ export function DataManagementScreen() {
   )
 }
 
-function FilterField({
-  label,
-  icon: Icon,
-  children,
-}: {
-  label: string
-  icon: LucideIcon
-  children: ReactNode
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="inline-flex items-center gap-1 text-start text-[11px] font-semibold text-foreground">
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        {label}
-      </span>
-      <div className="w-full">{children}</div>
-    </div>
-  )
+function statusLabel(isActive: boolean) {
+  return isActive ? he.manager.organization.active : he.manager.organization.inactive
 }
+
+/** Stable desktop grid: # | שם | A | B | עריכה | מחיקה */
+const TABLE_COLUMN_WIDTHS = ["6%", "36%", "21%", "21%", "8%", "8%"] as const
 
 function countDiaries(db: MockDb, tab: TabId, id: string) {
   if (tab === "companies") return db.diaries.filter((diary) => diary.companyId === id).length
@@ -315,47 +324,49 @@ function EntityList({
   onDelete: (kind: TabId, id: string) => void
 }) {
   const query = search.trim()
+
   if (tab === "companies" || tab === "customers" || tab === "sites") {
-    const orgRows =
+    const items =
       tab === "companies"
-        ? db.companies
-            .filter((item) => !query || item.name.includes(query))
-            .map((item, index) => ({
-              id: item.id,
-              index: index + 1,
-              name: item.name,
-              foundedAt: item.createdAt,
-              diaries: countDiaries(db, "companies", item.id),
-              onEdit: () => onEdit({ kind: "company", id: item.id, name: item.name }),
-              onDelete: () => onDelete("companies", item.id),
-            }))
+        ? db.companies.filter((item) => !query || item.name.includes(query))
         : tab === "customers"
-          ? db.customers
-              .filter((item) => !query || item.name.includes(query))
-              .map((item, index) => ({
-                id: item.id,
-                index: index + 1,
-                name: item.name,
-                foundedAt: item.createdAt,
-                diaries: countDiaries(db, "customers", item.id),
-                onEdit: () => onEdit({ kind: "customer", id: item.id, name: item.name }),
-                onDelete: () => onDelete("customers", item.id),
-              }))
-          : db.sites
-              .filter((item) => !query || item.name.includes(query))
-              .map((item, index) => ({
-                id: item.id,
-                index: index + 1,
-                name: item.name,
-                foundedAt: item.createdAt,
-                diaries: countDiaries(db, "sites", item.id),
-                onEdit: () => onEdit({ kind: "site", id: item.id, name: item.name }),
-                onDelete: () => onDelete("sites", item.id),
-              }))
-    return <OrgEntityTable rows={orgRows} />
+          ? db.customers.filter((item) => !query || item.name.includes(query))
+          : db.sites.filter((item) => !query || item.name.includes(query))
+
+    const rows: TableRow[] = items.map((item, index) => ({
+      id: item.id,
+      cells: [
+        String(index + 1),
+        item.name,
+        formatWorkDateNumeric(item.createdAt.slice(0, 10)),
+        String(countDiaries(db, tab, item.id)),
+      ],
+      onEdit: () => {
+        if (tab === "companies") onEdit({ kind: "company", id: item.id, name: item.name })
+        else if (tab === "customers") onEdit({ kind: "customer", id: item.id, name: item.name })
+        else onEdit({ kind: "site", id: item.id, name: item.name })
+      },
+      onDelete: () => onDelete(tab, item.id),
+    }))
+
+    return (
+      <DataTable
+        empty={rows.length === 0}
+        headers={[
+          he.manager.organization.index,
+          he.manager.organization.name,
+          he.manager.organization.foundedAt,
+          he.manager.organization.diariesCount,
+          he.manager.edit,
+          he.manager.organization.delete,
+        ]}
+        rows={rows}
+      />
+    )
   }
+
   if (tab === "teamLeaders") {
-    const rows = db.users.filter((user) => {
+    const items = db.users.filter((user) => {
       if (user.role !== "teamLeader") return false
       if (!query) return true
       return (
@@ -364,176 +375,72 @@ function EntityList({
         (user.phone ?? "").includes(query)
       )
     })
+    const rows: TableRow[] = items.map((item, index) => ({
+      id: item.id,
+      cells: [
+        String(index + 1),
+        item.fullName,
+        item.phone ?? "—",
+        item.identityNumber || "—",
+      ],
+      onEdit: () =>
+        onEdit({
+          kind: "teamLeader",
+          id: item.id,
+          fullName: item.fullName,
+          identityNumber: item.identityNumber,
+          phone: item.phone ?? "",
+        }),
+      onDelete: () => onDelete("teamLeaders", item.id),
+    }))
+
     return (
-      <EntityTable
+      <DataTable
         empty={rows.length === 0}
         headers={[
           he.manager.organization.index,
-          he.manager.teamLeaders.name,
-          he.manager.teamLeaders.identity,
+          he.manager.organization.name,
           he.manager.teamLeaders.phone,
+          he.manager.teamLeaders.identity,
           he.manager.edit,
           he.manager.organization.delete,
         ]}
-        rows={rows.map((item, index) => ({
-          id: item.id,
-          cells: [String(index + 1), item.fullName, item.identityNumber, item.phone ?? ""],
-          onEdit: () =>
-            onEdit({
-              kind: "teamLeader",
-              id: item.id,
-              fullName: item.fullName,
-              identityNumber: item.identityNumber,
-              phone: item.phone ?? "",
-            }),
-          onDelete: () => onDelete("teamLeaders", item.id),
-        }))}
+        rows={rows}
       />
     )
   }
-  const rows = db.users.filter((user) => {
+
+  const items = db.users.filter((user) => {
     if (user.role !== "manager") return false
     if (!query) return true
     return user.fullName.includes(query) || (user.email ?? "").includes(query)
   })
+  const rows: TableRow[] = items.map((item, index) => ({
+    id: item.id,
+    cells: [String(index + 1), item.fullName, item.email ?? "—", statusLabel(item.isActive)],
+    onEdit: () =>
+      onEdit({
+        kind: "manager",
+        id: item.id,
+        fullName: item.fullName,
+        email: item.email ?? "",
+      }),
+    onDelete: () => onDelete("managers", item.id),
+  }))
+
   return (
-    <EntityTable
+    <DataTable
       empty={rows.length === 0}
       headers={[
         he.manager.organization.index,
-        he.manager.managers.name,
+        he.manager.organization.name,
         he.manager.managers.email,
+        he.manager.organization.status,
         he.manager.edit,
         he.manager.organization.delete,
       ]}
-      rows={rows.map((item, index) => ({
-        id: item.id,
-        cells: [String(index + 1), item.fullName, item.email ?? ""],
-        onEdit: () =>
-          onEdit({
-            kind: "manager",
-            id: item.id,
-            fullName: item.fullName,
-            email: item.email ?? "",
-          }),
-        onDelete: () => onDelete("managers", item.id),
-      }))}
+      rows={rows}
     />
-  )
-}
-
-function OrgEntityTable({
-  rows,
-}: {
-  rows: Array<{
-    id: string
-    index: number
-    name: string
-    foundedAt: string
-    diaries: number
-    onEdit: () => void
-    onDelete: () => void
-  }>
-}) {
-  const headers = [
-    he.manager.organization.index,
-    he.manager.organization.name,
-    he.manager.organization.foundedAt,
-    he.manager.organization.diariesCount,
-    he.manager.edit,
-    he.manager.organization.delete,
-  ]
-  const empty = rows.length === 0
-  return (
-    <>
-      <div className="hidden rounded-md border border-border bg-card lg:block">
-        <table className="w-full border-collapse text-[11px] leading-4">
-          <colgroup>
-            <col className="w-12" />
-            <col />
-            <col className="w-28" />
-            <col className="w-28" />
-            <col className="w-16" />
-            <col className="w-16" />
-          </colgroup>
-          <thead className="sticky top-0 z-20 bg-muted">
-            <tr className="border-b border-border bg-muted text-foreground">
-              {headers.map((header, index) => (
-                <th
-                  key={header}
-                  className={cn(
-                    "bg-muted px-3 py-2.5 font-medium whitespace-nowrap",
-                    index === 1 ? "text-start" : "text-center"
-                  )}
-                >
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {empty ? (
-              <tr>
-                <td colSpan={headers.length} className="px-3 py-6 text-center text-sm text-muted-foreground">
-                  {he.manager.empty}
-                </td>
-              </tr>
-            ) : (
-              rows.map((row) => (
-                <tr key={row.id} className="border-b border-border/80 last:border-b-0 hover:bg-muted/40">
-                  <td className="px-3 py-2.5 text-center tabular-nums text-muted-foreground">{row.index}</td>
-                  <td className="truncate px-3 py-2.5 text-start font-medium">{row.name}</td>
-                  <td className="px-3 py-2.5 text-center tabular-nums whitespace-nowrap">
-                    {formatWorkDateNumeric(row.foundedAt.slice(0, 10))}
-                  </td>
-                  <td className="px-3 py-2.5 text-center tabular-nums">{row.diaries}</td>
-                  <td className="px-2 py-2 text-center">
-                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
-                      <PenLine className="size-3.5" aria-hidden />
-                    </RowIconButton>
-                  </td>
-                  <td className="px-2 py-2 text-center">
-                    <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
-                      <Trash className="size-3.5" aria-hidden />
-                    </RowIconButton>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-        {empty ? (
-          <li className="px-3 py-6 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
-        ) : (
-          rows.map((row) => (
-            <li key={row.id} className="border-b border-border px-3 py-3 text-sm last:border-b-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="font-medium">
-                    <span className="me-2 text-muted-foreground tabular-nums">{row.index}.</span>
-                    {row.name}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {formatWorkDateNumeric(row.foundedAt.slice(0, 10))} · {row.diaries}{" "}
-                    {he.manager.organization.diariesCount}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
-                    <PenLine className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                  <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
-                    <Trash className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                </div>
-              </div>
-            </li>
-          ))
-        )}
-      </ul>
-    </>
   )
 }
 
@@ -551,7 +458,7 @@ function RowIconButton({
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="text-muted-foreground hover:text-foreground"
+      className="size-9 text-muted-foreground hover:text-foreground"
       aria-label={label}
       onClick={onClick}
     >
@@ -560,31 +467,31 @@ function RowIconButton({
   )
 }
 
-function EntityTable({
+function DataTable({
   empty,
   headers,
   rows,
 }: {
   empty: boolean
   headers: string[]
-  rows: Array<{
-    id: string
-    cells: string[]
-    onEdit: () => void
-    onDelete: () => void
-  }>
+  rows: TableRow[]
 }) {
   return (
     <>
-      <div className="hidden rounded-md border border-border bg-card lg:block">
-        <table className="w-full border-collapse text-[11px] leading-4">
+      <div className="hidden w-full overflow-hidden rounded-md border border-border bg-card lg:block">
+        <table className="w-full table-fixed border-collapse text-[11px] leading-4">
+          <colgroup>
+            {TABLE_COLUMN_WIDTHS.map((width, index) => (
+              <col key={index} style={{ width }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 z-20 bg-muted">
             <tr className="border-b border-border bg-muted text-foreground">
               {headers.map((header, index) => (
                 <th
                   key={`${header}-${index}`}
                   className={cn(
-                    "bg-muted px-3 py-2.5 font-medium whitespace-nowrap",
+                    "h-10 bg-muted px-2 text-[11px] font-medium whitespace-nowrap",
                     index === 1 ? "text-start" : "text-center"
                   )}
                 >
@@ -596,30 +503,33 @@ function EntityTable({
           <tbody>
             {empty ? (
               <tr>
-                <td colSpan={headers.length} className="px-3 py-6 text-center text-sm text-muted-foreground">
+                <td colSpan={headers.length} className="px-3 py-8 text-center text-xs text-muted-foreground">
                   {he.manager.empty}
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id} className="border-b border-border/80 last:border-b-0 hover:bg-muted/40">
+                <tr key={row.id} className="h-12 border-b border-border/80 last:border-b-0 hover:bg-muted/40">
                   {row.cells.map((cell, index) => (
                     <td
                       key={`${row.id}-${index}`}
                       className={cn(
-                        "truncate px-3 py-2.5",
-                        index === 1 ? "text-start font-medium" : "text-center tabular-nums"
+                        "px-2 py-2 align-middle",
+                        index === 1
+                          ? "text-start font-medium break-words whitespace-normal"
+                          : "truncate text-center tabular-nums text-muted-foreground"
                       )}
+                      title={index === 1 ? cell : undefined}
                     >
                       {cell || "—"}
                     </td>
                   ))}
-                  <td className="px-2 py-2 text-center">
+                  <td className="px-1 py-1 text-center align-middle">
                     <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
                       <PenLine className="size-3.5" aria-hidden />
                     </RowIconButton>
                   </td>
-                  <td className="px-2 py-2 text-center">
+                  <td className="px-1 py-1 text-center align-middle">
                     <RowIconButton label={he.manager.organization.delete} onClick={row.onDelete}>
                       <Trash className="size-3.5" aria-hidden />
                     </RowIconButton>
@@ -631,23 +541,23 @@ function EntityTable({
         </table>
       </div>
 
-      <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
+      <ul className="w-full overflow-hidden rounded-md border border-border bg-card lg:hidden">
         {empty ? (
-          <li className="px-3 py-6 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
+          <li className="px-3 py-8 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
         ) : (
           rows.map((row) => (
-            <li key={row.id} className="border-b border-border px-3 py-3 text-sm last:border-b-0">
+            <li key={row.id} className="border-b border-border px-3 py-3 last:border-b-0">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-medium">{row.cells[1] ?? row.cells[0]}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {row.cells
-                      .filter((_, index) => index !== 1)
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <p className="text-sm font-medium break-words">
+                    <span className="me-2 text-muted-foreground tabular-nums">{row.cells[0]}.</span>
+                    {row.cells[1]}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground break-words">
+                    {row.cells.slice(2).filter(Boolean).join(" · ")}
                   </p>
                 </div>
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="flex shrink-0 items-center gap-0.5">
                   <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
                     <PenLine className="size-3.5" aria-hidden />
                   </RowIconButton>
@@ -669,6 +579,27 @@ function editorIcon(kind: Editor["kind"]): LucideIcon {
   if (kind === "customer") return Users
   if (kind === "site") return MapPin
   return UserRound
+}
+
+function CreateCard({
+  create,
+  error,
+  onChange,
+  onSave,
+}: {
+  create: Editor
+  error: boolean
+  onChange: (editor: Editor) => void
+  onSave: () => void
+}) {
+  return (
+    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:min-h-[12rem] lg:flex-1">
+      <div className="shrink-0 border-b border-border/70 px-4 py-3">
+        <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
+      </div>
+      <EditorForm editor={create} error={error} onChange={onChange} onSave={onSave} />
+    </section>
+  )
 }
 
 function EditorPanel({
@@ -725,10 +656,12 @@ function EditorPanel({
 }
 
 function EditorHeader({ title, kind }: { title: string; kind: Editor["kind"] }) {
-  const Icon = editorIcon(kind)
   return (
     <div className="grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2">
-      <Icon className="size-4 justify-self-center text-muted-foreground" aria-hidden />
+      {createElement(editorIcon(kind), {
+        className: "size-4 justify-self-center text-muted-foreground",
+        "aria-hidden": true,
+      })}
       <p className="text-sm font-semibold text-foreground">{title}</p>
     </div>
   )
@@ -756,8 +689,6 @@ function EditorField({
     </label>
   )
 }
-
-const editorInputClass = cn(filterControlClass, "text-right")
 
 function EditorForm({
   editor,
