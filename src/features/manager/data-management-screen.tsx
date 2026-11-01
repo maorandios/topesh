@@ -593,7 +593,7 @@ function CreateCard({
   onSave: () => void
 }) {
   return (
-    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:min-h-[12rem] lg:flex-1">
+    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0 lg:min-h-[12rem]">
       <div className="shrink-0 border-b border-border/70 px-4 py-3">
         <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
       </div>
