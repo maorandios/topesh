@@ -398,7 +398,7 @@ export function DataManagementScreen() {
                   type="button"
                   size="default"
                   variant="outline"
-                  className="h-10 w-full"
+                  className="h-[calc(2.5rem*1.1*1.1)] w-full"
                   onClick={() => setDeleteFlow(null)}
                 >
                   {he.manager.organization.deleteBlockedKeep}
@@ -416,12 +416,12 @@ export function DataManagementScreen() {
                   type="button"
                   size="default"
                   variant="outline"
-                  className="h-10 w-[30%]"
+                  className="h-[calc(2.5rem*1.1*1.1)] w-[30%]"
                   onClick={() => setDeleteFlow(null)}
                 >
                   {he.manager.panel.abortAction}
                 </Button>
-                <Button type="button" size="default" className="h-10 w-[70%]" onClick={runDelete}>
+                <Button type="button" size="default" className="h-[calc(2.5rem*1.1*1.1)] w-[70%]" onClick={runDelete}>
                   {he.manager.organization.deleteAction}
                 </Button>
               </DialogFooter>
@@ -770,7 +770,7 @@ function RowIconButton({
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="size-9 text-muted-foreground hover:text-foreground"
+      className="size-[calc(2.25rem*1.1*1.1)] text-muted-foreground hover:text-foreground"
       aria-label={label}
       onClick={onClick}
     >
@@ -970,7 +970,7 @@ function OrgNavList({ empty, items }: { empty: boolean; items: OrgNavItem[] }) {
                 <Button
                   type="button"
                   size="default"
-                  className="h-11 w-[70%]"
+                  className="h-[calc(2.75rem*1.1*1.1)] w-[70%]"
                   onClick={() => {
                     const item = selected
                     setSelectedId(null)
@@ -983,7 +983,7 @@ function OrgNavList({ empty, items }: { empty: boolean; items: OrgNavItem[] }) {
                   type="button"
                   size="default"
                   variant="outline"
-                  className="h-11 w-[30%]"
+                  className="h-[calc(2.75rem*1.1*1.1)] w-[30%]"
                   onClick={() => {
                     const item = selected
                     setSelectedId(null)
@@ -1366,7 +1366,7 @@ function EditorForm({
         </div>
       </div>
       <div className="flex flex-col gap-2 border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <Button type="button" size="default" className="h-9 w-full" onClick={onSave}>
+        <Button type="button" size="default" className="h-[calc(2.25rem*1.1*1.1)] w-full" onClick={onSave}>
           {he.manager.save}
         </Button>
       </div>

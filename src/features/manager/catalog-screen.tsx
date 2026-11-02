@@ -2,9 +2,19 @@
 
 import { createElement, useState, useSyncExternalStore, type ReactNode } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Boxes, ChevronDown, Layers, PenLine, Ruler, Search, Trash, type LucideIcon } from "lucide-react"
+import {
+  ArrowLeft,
+  Boxes,
+  ChevronDown,
+  Layers,
+  PenLine,
+  Ruler,
+  Search,
+  Trash,
+  type LucideIcon,
+} from "lucide-react"
 import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
-import { sortSelectOptions } from "@/lib/sort"
+import { sortByHebrewName, sortSelectOptions } from "@/lib/sort"
 import { toast } from "sonner"
 import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
@@ -62,9 +72,19 @@ type TableRow = {
   onDelete: () => void
 }
 
-const tabs: Array<{ id: TabId; label: string }> = [
-  { id: "domains", label: he.manager.catalog.tabs.domains },
-  { id: "components", label: he.manager.catalog.tabs.components },
+type CatalogNavItem = {
+  id: string
+  kind: Editor["kind"]
+  name: string
+  meta: string
+  details: Array<{ label: string; value: string }>
+  onEdit: () => void
+  onDelete: () => void
+}
+
+const tabs: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
+  { id: "domains", label: he.manager.catalog.tabs.domains, icon: Layers },
+  { id: "components", label: he.manager.catalog.tabs.components, icon: Boxes },
 ]
 
 /** Stable desktop grid: # | שם | A | B | עריכה | מחיקה */
@@ -107,12 +127,8 @@ export function CatalogScreen() {
         }
       : create
 
-  const counts: Record<TabId, number> = {
-    domains: db.domains.length,
-    components: db.components.length,
-  }
-
   const chooseTab = (next: TabId) => {
+    if (next === tab) return
     setTab(next)
     setSearch("")
     setCreate(createBlank(next, db))
@@ -165,41 +181,40 @@ export function CatalogScreen() {
   return (
     <PageFrame>
       <div className="flex w-full flex-col gap-3 px-4 py-4 sm:px-6">
-        <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <div
-            role="tablist"
-            aria-label={he.manager.catalog.title}
-            className="inline-flex min-w-full gap-1 sm:min-w-0"
-          >
-            {tabs.map((item) => {
-              const selected = tab === item.id
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
+        <div
+          role="tablist"
+          aria-label={he.manager.catalog.title}
+          className="grid grid-cols-2 gap-3"
+        >
+          {tabs.map((item) => {
+            const selected = tab === item.id
+            const Icon = item.icon
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={cn(
+                  "pressable flex aspect-square w-full flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors lg:aspect-auto lg:min-h-[7.5rem]",
+                  selected
+                    ? "border-primary bg-primary/10 text-foreground shadow-[0_0_0_1px_rgb(255_51_0_/0.25)]"
+                    : "border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                )}
+                onClick={() => chooseTab(item.id)}
+              >
+                <span
                   className={cn(
-                    "pressable inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-sm whitespace-nowrap transition-colors",
-                    selected
-                      ? "border-foreground bg-muted font-medium text-foreground"
-                      : "border-border bg-card text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    "inline-flex size-9 items-center justify-center rounded-full",
+                    selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                   )}
-                  onClick={() => chooseTab(item.id)}
                 >
-                  <span>{item.label}</span>
-                  <span
-                    className={cn(
-                      "rounded-full px-1.5 py-0.5 text-[11px] tabular-nums",
-                      selected ? "bg-background text-foreground" : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    {counts[item.id]}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
+                  <Icon className="size-4" aria-hidden />
+                </span>
+                <span className="text-sm font-medium leading-tight">{item.label}</span>
+              </button>
+            )
+          })}
         </div>
 
         {blockReason ? (
@@ -237,6 +252,7 @@ export function CatalogScreen() {
           </div>
 
           <CreateCard
+            key={createForm.kind}
             db={db}
             create={createForm}
             error={createError}
@@ -266,12 +282,12 @@ export function CatalogScreen() {
               type="button"
               size="default"
               variant="outline"
-              className="h-10 w-[30%]"
+              className="h-[calc(2.5rem*1.1*1.1)] w-[30%]"
               onClick={() => setDeleteId(null)}
             >
               {he.manager.panel.abortAction}
             </Button>
-            <Button type="button" size="default" className="h-10 w-[70%]" onClick={runDelete}>
+            <Button type="button" size="default" className="h-[calc(2.5rem*1.1*1.1)] w-[70%]" onClick={runDelete}>
               {he.manager.catalog.deleteAction}
             </Button>
           </DialogFooter>
@@ -301,40 +317,71 @@ function EntityList({
   const query = search.trim()
 
   if (tab === "domains") {
-    const items = db.domains.filter((item) => !query || item.name.includes(query))
-    const rows: TableRow[] = items.map((item, index) => ({
-      id: item.id,
-      cells: [
-        String(index + 1),
-        item.name,
-        String(db.components.filter((component) => component.domainId === item.id).length),
-        statusLabel(item.isActive),
-      ],
-      onEdit: () => onEdit({ kind: "domain", id: item.id, name: item.name }),
-      onDelete: () => onDelete("domains", item.id),
-    }))
+    const items = sortByHebrewName(
+      db.domains.filter((item) => !query || item.name.includes(query))
+    )
+    const rows: TableRow[] = items.map((item, index) => {
+      const componentsCount = db.components.filter(
+        (component) => component.domainId === item.id
+      ).length
+      return {
+        id: item.id,
+        cells: [
+          String(index + 1),
+          item.name,
+          String(componentsCount),
+          statusLabel(item.isActive),
+        ],
+        onEdit: () => onEdit({ kind: "domain", id: item.id, name: item.name }),
+        onDelete: () => onDelete("domains", item.id),
+      }
+    })
+    const navItems: CatalogNavItem[] = items.map((item) => {
+      const componentsCount = db.components.filter(
+        (component) => component.domainId === item.id
+      ).length
+      return {
+        id: item.id,
+        kind: "domain",
+        name: item.name,
+        meta: String(componentsCount),
+        details: [
+          { label: he.manager.catalog.name, value: item.name },
+          { label: he.manager.catalog.componentsCount, value: String(componentsCount) },
+          { label: he.manager.catalog.status, value: statusLabel(item.isActive) },
+        ],
+        onEdit: () => onEdit({ kind: "domain", id: item.id, name: item.name }),
+        onDelete: () => onDelete("domains", item.id),
+      }
+    })
 
     return (
-      <DataTable
-        empty={rows.length === 0}
-        headers={[
-          he.manager.catalog.index,
-          he.manager.catalog.name,
-          he.manager.catalog.componentsCount,
-          he.manager.catalog.status,
-          he.manager.edit,
-          he.manager.catalog.delete,
-        ]}
-        rows={rows}
-      />
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.catalog.index,
+            he.manager.catalog.name,
+            he.manager.catalog.componentsCount,
+            he.manager.catalog.status,
+            he.manager.edit,
+            he.manager.catalog.delete,
+          ]}
+          rows={rows}
+        />
+        <CatalogNavList empty={navItems.length === 0} items={navItems} />
+      </>
     )
   }
 
-  const items = db.components.filter((item) => {
-    if (!query) return true
-    const domain = db.domains.find((entry) => entry.id === item.domainId)?.name ?? ""
-    return item.name.includes(query) || item.unit.includes(query) || domain.includes(query)
-  })
+  const items = sortByHebrewName(
+    db.components.filter((item) => {
+      if (!query) return true
+      const domain = db.domains.find((entry) => entry.id === item.domainId)?.name ?? ""
+      return item.name.includes(query) || item.unit.includes(query) || domain.includes(query)
+    })
+  )
   const rows: TableRow[] = items.map((item, index) => ({
     id: item.id,
     cells: [
@@ -353,20 +400,48 @@ function EntityList({
       }),
     onDelete: () => onDelete("components", item.id),
   }))
+  const navItems: CatalogNavItem[] = items.map((item) => {
+    const domainName = db.domains.find((domain) => domain.id === item.domainId)?.name ?? "—"
+    const unit = item.unit || "—"
+    return {
+      id: item.id,
+      kind: "component",
+      name: item.name,
+      meta: unit,
+      details: [
+        { label: he.manager.catalog.name, value: item.name },
+        { label: he.manager.catalog.domain, value: domainName },
+        { label: he.manager.catalog.unit, value: unit },
+      ],
+      onEdit: () =>
+        onEdit({
+          kind: "component",
+          id: item.id,
+          domainId: item.domainId,
+          name: item.name,
+          unit: item.unit,
+        }),
+      onDelete: () => onDelete("components", item.id),
+    }
+  })
 
   return (
-    <DataTable
-      empty={rows.length === 0}
-      headers={[
-        he.manager.catalog.index,
-        he.manager.catalog.name,
-        he.manager.catalog.domain,
-        he.manager.catalog.unit,
-        he.manager.edit,
-        he.manager.catalog.delete,
-      ]}
-      rows={rows}
-    />
+    <>
+      <DataTable
+        empty={rows.length === 0}
+        mobile={false}
+        headers={[
+          he.manager.catalog.index,
+          he.manager.catalog.name,
+          he.manager.catalog.domain,
+          he.manager.catalog.unit,
+          he.manager.edit,
+          he.manager.catalog.delete,
+        ]}
+        rows={rows}
+      />
+      <CatalogNavList empty={navItems.length === 0} items={navItems} />
+    </>
   )
 }
 
@@ -384,7 +459,7 @@ function RowIconButton({
       type="button"
       size="icon-sm"
       variant="ghost"
-      className="size-9 text-muted-foreground hover:text-foreground"
+      className="size-[calc(2.25rem*1.1*1.1)] text-muted-foreground hover:text-foreground"
       aria-label={label}
       onClick={onClick}
     >
@@ -397,10 +472,12 @@ function DataTable({
   empty,
   headers,
   rows,
+  mobile = true,
 }: {
   empty: boolean
   headers: string[]
   rows: TableRow[]
+  mobile?: boolean
 }) {
   return (
     <>
@@ -467,35 +544,149 @@ function DataTable({
         </table>
       </div>
 
+      {mobile ? (
+        <ul className="w-full overflow-hidden rounded-md border border-border bg-card lg:hidden">
+          {empty ? (
+            <li className="px-3 py-8 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
+          ) : (
+            rows.map((row) => (
+              <li
+                key={row.id}
+                className="border-b border-border px-3 py-[calc(0.75rem*1.15*1.15)] last:border-b-0"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium break-words">
+                      <span className="me-2 text-muted-foreground tabular-nums">{row.cells[0]}.</span>
+                      {row.cells[1]}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground break-words">
+                      {row.cells.slice(2).filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
+                      <PenLine className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                    <RowIconButton label={he.manager.catalog.delete} onClick={row.onDelete}>
+                      <Trash className="size-3.5" aria-hidden />
+                    </RowIconButton>
+                  </div>
+                </div>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </>
+  )
+}
+
+function CatalogNavList({ empty, items }: { empty: boolean; items: CatalogNavItem[] }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const selected = items.find((item) => item.id === selectedId) ?? null
+
+  return (
+    <>
       <ul className="w-full overflow-hidden rounded-md border border-border bg-card lg:hidden">
         {empty ? (
           <li className="px-3 py-8 text-center text-sm text-muted-foreground">{he.manager.empty}</li>
         ) : (
-          rows.map((row) => (
-            <li key={row.id} className="border-b border-border px-3 py-3 last:border-b-0">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium break-words">
-                    <span className="me-2 text-muted-foreground tabular-nums">{row.cells[0]}.</span>
-                    {row.cells[1]}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground break-words">
-                    {row.cells.slice(2).filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-0.5">
-                  <RowIconButton label={he.manager.edit} onClick={row.onEdit}>
-                    <PenLine className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                  <RowIconButton label={he.manager.catalog.delete} onClick={row.onDelete}>
-                    <Trash className="size-3.5" aria-hidden />
-                  </RowIconButton>
-                </div>
-              </div>
+          items.map((item) => (
+            <li key={item.id} className="border-b border-border last:border-b-0">
+              <button
+                type="button"
+                className="pressable flex w-full items-center gap-3 px-3 py-[calc(0.75rem*1.15*1.15)] text-start"
+                onClick={() => setSelectedId(item.id)}
+              >
+                <p className="min-w-0 flex-1 text-sm font-medium break-words">
+                  <span>{item.name}</span>
+                  <span className="text-muted-foreground"> · </span>
+                  <span className="tabular-nums text-muted-foreground" dir="ltr">
+                    {item.meta}
+                  </span>
+                </p>
+                <ArrowLeft className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
             </li>
           ))
         )}
       </ul>
+
+      <Drawer
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedId(null)
+        }}
+        showSwipeHandle
+        swipeDirection="down"
+      >
+        <DrawerContent
+          className={cn("min-h-[min(52dvh,28rem)] overflow-hidden", panelSurfaceClass)}
+          style={panelSurfaceStyle}
+        >
+          <DrawerHeader className="gap-1 pb-2 text-start md:text-start">
+            <DrawerTitle className="flex items-center justify-start gap-2 text-start">
+              {selected
+                ? createElement(editorIcon(selected.kind), {
+                    className: "size-4 shrink-0 text-muted-foreground",
+                    "aria-hidden": true,
+                  })
+                : null}
+              <span className="min-w-0 truncate">{selected?.name ?? ""}</span>
+            </DrawerTitle>
+          </DrawerHeader>
+          {selected ? (
+            <div className="flex flex-1 flex-col gap-5 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-1">
+              <dl className="flex flex-col gap-0 overflow-hidden rounded-xl border border-border bg-muted/25">
+                {selected.details.map((detail, index) => (
+                  <div
+                    key={detail.label}
+                    className={cn(
+                      "flex flex-col gap-1.5 px-4 py-3.5",
+                      index < selected.details.length - 1 && "border-b border-border/70"
+                    )}
+                  >
+                    <dt className="text-[11px] font-medium tracking-wide text-muted-foreground">
+                      {detail.label}
+                    </dt>
+                    <dd className="text-base font-semibold leading-snug text-foreground break-words">
+                      {detail.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-auto flex flex-row gap-2">
+                <Button
+                  type="button"
+                  size="default"
+                  className="h-[calc(2.75rem*1.1*1.1)] w-[70%]"
+                  onClick={() => {
+                    const item = selected
+                    setSelectedId(null)
+                    item.onEdit()
+                  }}
+                >
+                  {he.manager.edit}
+                </Button>
+                <Button
+                  type="button"
+                  size="default"
+                  variant="outline"
+                  className="h-[calc(2.75rem*1.1*1.1)] w-[30%]"
+                  onClick={() => {
+                    const item = selected
+                    setSelectedId(null)
+                    item.onDelete()
+                  }}
+                >
+                  {he.manager.catalog.delete}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DrawerContent>
+      </Drawer>
     </>
   )
 }
@@ -517,12 +708,51 @@ function CreateCard({
   onChange: (editor: Editor) => void
   onSave: () => void
 }) {
+  const [open, setOpen] = useState(false)
+
   return (
-    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0 lg:min-h-[12rem]">
-      <div className="shrink-0 border-b border-border/70 px-4 py-3">
-        <EditorHeader title={he.manager.catalog.addTitles[create.kind]} kind={create.kind} />
+    <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0">
+      <button
+        type="button"
+        className={cn(
+          "pressable flex w-full items-center gap-2 px-4 py-3 text-start transition-[border-color] duration-300",
+          open ? "border-b border-border/70" : "border-b border-transparent"
+        )}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <div className="min-w-0 flex-1">
+          <EditorHeader title={he.manager.catalog.addTitles[create.kind]} kind={create.kind} />
+        </div>
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+            open && "rotate-180"
+          )}
+          aria-hidden
+        />
+      </button>
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows] duration-300 ease-out",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div
+          className={cn("min-h-0 overflow-hidden", !open && "pointer-events-none")}
+          aria-hidden={!open}
+          inert={open ? undefined : true}
+        >
+          <div
+            className={cn(
+              "transition-[opacity,transform] duration-300 ease-out",
+              open ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+            )}
+          >
+            <EditorForm db={db} editor={create} error={error} onChange={onChange} onSave={onSave} />
+          </div>
+        </div>
       </div>
-      <EditorForm db={db} editor={create} error={error} onChange={onChange} onSave={onSave} />
     </section>
   )
 }
@@ -713,7 +943,7 @@ function EditorForm({
         </div>
       </div>
       <div className="border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <Button type="button" size="default" className="h-9 w-full" onClick={onSave}>
+        <Button type="button" size="default" className="h-[calc(2.25rem*1.1*1.1)] w-full" onClick={onSave}>
           {he.manager.save}
         </Button>
       </div>
