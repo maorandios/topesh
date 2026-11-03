@@ -268,7 +268,7 @@ function CreateForm({
 
       <PanelNoticeBanner />
       <div className="shrink-0 border-t border-border/70 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        <Button type="button" size="default" className="h-9 w-full" onClick={save}>
+        <Button type="button" size="default" className="h-[calc(2.25rem*1.1*1.1)] w-full" onClick={save}>
           {he.manager.save}
         </Button>
       </div>

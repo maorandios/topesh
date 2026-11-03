@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import {
   Building2,
   CalendarDays,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -36,6 +37,13 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from "@/components/ui/drawer"
+import {
   Sheet,
   SheetContent,
   SheetFooter,
@@ -62,7 +70,10 @@ import {
 import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
-import { FilterChips } from "@/features/manager/mobile-filters/filter-chips"
+import {
+  FilterTriggerControl,
+  MobileFilterPicker,
+} from "@/features/manager/mobile-filters/picker-overlay"
 import { exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
 import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { exportReportPdf } from "@/features/manager/reports/export-pdf"
@@ -79,7 +90,7 @@ import {
 import { cn } from "cn"
 
 const filterControlClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-[calc(2.25rem*1.1*1.1)] w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 
@@ -93,6 +104,7 @@ export function ReportsScreen() {
 }
 
 function ReportsReady({ db }: { db: MockDb }) {
+  const desktop = useDesktop()
   const [filters, setFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [draftFilters, setDraftFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -101,6 +113,7 @@ function ReportsReady({ db }: { db: MockDb }) {
   const [exportOpen, setExportOpen] = useState(false)
   const [exportMode, setExportMode] = useState<ExportMode>("list")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+  const [selectMode, setSelectMode] = useState(false)
   const [loaded, setLoaded] = useState({ key: "", extra: 0 })
 
   const options = workDiarySearchOptions(db, filters)
@@ -120,7 +133,7 @@ function ReportsReady({ db }: { db: MockDb }) {
   const someSelected = selectedDiaries.length > 0 && !allSelected
   const canExport = selectedDiaries.length > 0 && !exporting
   const hasActiveFilters = isFilterActive(filters)
-  const filterChips = buildReportFilterChips(db, filters)
+  const hasActiveSheetFilters = hasActiveSheetFilter(filters)
 
   useEffect(() => {
     const visible = new Set(diaries.map((diary) => diary.id))
@@ -149,6 +162,7 @@ function ReportsReady({ db }: { db: MockDb }) {
     setFilters(emptyWorkDiarySearchFilters())
     setDraftFilters(emptyWorkDiarySearchFilters())
     setSelectedIds(new Set())
+    setSelectMode(false)
     setLoaded({ key: "", extra: 0 })
     setMobileFiltersOpen(false)
   }
@@ -164,30 +178,15 @@ function ReportsReady({ db }: { db: MockDb }) {
     setMobileFiltersOpen(false)
   }
 
-  const removeChip = (id: string) => {
-    if (id === "from") patchFilters({ from: "" })
-    if (id === "to") patchFilters({ to: "" })
-    if (id === "workOrderNumber") patchFilters({ workOrderNumber: "" })
-    if (id.startsWith("company:")) {
-      const value = id.slice("company:".length)
-      patchFilters({ companyIds: filters.companyIds.filter((item) => item !== value) })
-    }
-    if (id.startsWith("customer:")) {
-      const value = id.slice("customer:".length)
-      patchFilters({ customerIds: filters.customerIds.filter((item) => item !== value) })
-    }
-    if (id.startsWith("site:")) {
-      const value = id.slice("site:".length)
-      patchFilters({ siteIds: filters.siteIds.filter((item) => item !== value) })
-    }
-    if (id.startsWith("leader:")) {
-      const value = id.slice("leader:".length)
-      patchFilters({ teamLeaderIds: filters.teamLeaderIds.filter((item) => item !== value) })
-    }
-    if (id.startsWith("status:")) {
-      const value = id.slice("status:".length) as WorkDiarySearchFilters["statuses"][number]
-      patchFilters({ statuses: filters.statuses.filter((item) => item !== value) })
-    }
+  const clearSheetFilters = () => {
+    setFilters((prev) => ({
+      ...emptyWorkDiarySearchFilters(),
+      workOrderNumber: prev.workOrderNumber,
+    }))
+    setDraftFilters((prev) => ({
+      ...emptyWorkDiarySearchFilters(),
+      workOrderNumber: prev.workOrderNumber,
+    }))
   }
 
   const toggleAll = (checked: boolean) => {
@@ -195,12 +194,21 @@ function ReportsReady({ db }: { db: MockDb }) {
   }
 
   const toggleOne = (id: string, checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (checked) next.add(id)
-      else next.delete(id)
-      return next
-    })
+    const next = new Set(selectedIds)
+    if (checked) next.add(id)
+    else next.delete(id)
+    setSelectedIds(next)
+    if (next.size === 0) setSelectMode(false)
+  }
+
+  const enterSelectMode = (id: string) => {
+    setSelectMode(true)
+    setSelectedIds(new Set(selectedIds).add(id))
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
   }
 
   const openExportModal = () => {
@@ -278,23 +286,37 @@ function ReportsReady({ db }: { db: MockDb }) {
             />
             <Input
               value={filters.workOrderNumber}
-              placeholder={he.manager.reports.workOrderPlaceholder}
-              className="h-10 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
+              placeholder={he.manager.reports.searchFree}
+              className="h-[calc(2.25rem*1.1*1.1)] rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
               onChange={(event) => patchFilters({ workOrderNumber: event.target.value })}
             />
           </div>
-          <Button type="button" variant="outline" size="default" className="h-10 shrink-0" onClick={openMobileFilters}>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            className={cn(
+              "h-[calc(2.25rem*1.1*1.1)] shrink-0",
+              hasActiveSheetFilters && "border-primary text-foreground"
+            )}
+            onClick={openMobileFilters}
+          >
             <Filter className="size-4" aria-hidden />
             {he.manager.reports.filters}
           </Button>
+          {hasActiveSheetFilters ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              className="h-[calc(2.25rem*1.1*1.1)] shrink-0 border-primary text-foreground"
+              onClick={clearSheetFilters}
+            >
+              <X className="size-4" aria-hidden />
+              {he.manager.reports.exportCancel}
+            </Button>
+          ) : null}
         </div>
-
-        <FilterChips
-          chips={filterChips}
-          onRemove={removeChip}
-          onClear={clearFilters}
-          clearLabel={he.nav.clearFilters}
-        />
 
         <div className="hidden lg:block">
           <FilterPanel
@@ -330,14 +352,14 @@ function ReportsReady({ db }: { db: MockDb }) {
               <Button
                 type="button"
                 variant="outline"
-                className="h-10 w-[30%]"
+                className="h-[calc(2.25rem*1.1*1.1)] w-[30%]"
                 onClick={() => setDraftFilters(emptyWorkDiarySearchFilters())}
               >
                 {he.nav.clearFilters}
               </Button>
               <Button
                 type="button"
-                className="h-10 w-[70%]"
+                className="h-[calc(2.25rem*1.1*1.1)] w-[70%]"
                 disabled={Boolean(draftDateError)}
                 onClick={applyMobileFilters}
               >
@@ -361,20 +383,48 @@ function ReportsReady({ db }: { db: MockDb }) {
 
           {diaries.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-3 py-8 text-center lg:hidden">
-              <div className="mb-4">{toolbar}</div>
               <p className="text-sm font-medium text-foreground">{he.manager.reports.empty}</p>
               <p className="mt-1 text-sm text-muted-foreground">{he.manager.reports.emptyHint}</p>
             </div>
           ) : (
             <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-              <li className="border-b border-border bg-muted/70 px-3 py-2.5">{toolbar}</li>
-              {visibleDiaries.map((diary, index) => (
+              <li
+                className={cn(
+                  "grid border-border bg-muted/70 transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
+                  selectMode ? "grid-rows-[1fr] border-b" : "grid-rows-[0fr]"
+                )}
+                aria-hidden={!selectMode}
+              >
+                <div
+                  className={cn(
+                    "min-h-0 overflow-hidden",
+                    !selectMode && "pointer-events-none"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "px-2 py-2 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none",
+                      selectMode ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+                    )}
+                  >
+                    <MobileSelectToolbar
+                      selectedCount={selectedDiaries.length}
+                      canExport={canExport}
+                      exporting={exporting}
+                      onCancel={exitSelectMode}
+                      onExportPdf={openExportModal}
+                    />
+                  </div>
+                </div>
+              </li>
+              {visibleDiaries.map((diary) => (
                 <li key={diary.id} className="border-b border-border last:border-b-0">
                   <DiaryResultRow
                     diary={diary}
-                    index={index + 1}
+                    selectMode={selectMode}
                     selected={selectedIds.has(diary.id)}
                     onToggle={(checked) => toggleOne(diary.id, checked)}
+                    onEnterSelectMode={() => enterSelectMode(diary.id)}
                     onOpen={setOpenDiaryId}
                   />
                 </li>
@@ -388,37 +438,80 @@ function ReportsReady({ db }: { db: MockDb }) {
 
       <DiaryPanel db={db} diary={openDiary} onOpenChange={(open) => { if (!open) setOpenDiaryId(null) }} />
 
-      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
-        <DialogContent className="sm:max-w-md" dir="rtl">
-          <DialogHeader>
-            <DialogTitle>{he.manager.reports.exportModalTitlePdf}</DialogTitle>
-            <DialogDescription>{he.manager.reports.exportModalBody}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label={he.manager.reports.exportModalBody}>
-            <ExportModeOption
-              pressed={exportMode === "list"}
-              title={he.manager.reports.exportModeList}
-              hint={he.manager.reports.exportModeListHint}
-              onClick={() => setExportMode("list")}
-            />
-            <ExportModeOption
-              pressed={exportMode === "contents"}
-              title={he.manager.reports.exportModeContents}
-              hint={he.manager.reports.exportModeContentsHint}
-              onClick={() => setExportMode("contents")}
-            />
-          </div>
-          <DialogFooter className="sm:justify-start">
-            <Button type="button" onClick={() => void runExport()}>
-              {he.manager.reports.exportConfirm}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setExportOpen(false)}>
-              {he.manager.reports.exportCancel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {desktop ? (
+        <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+          <DialogContent className="sm:max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle>{he.manager.reports.exportModalTitlePdf}</DialogTitle>
+              <DialogDescription>{he.manager.reports.exportModalBody}</DialogDescription>
+            </DialogHeader>
+            <ExportModePicker exportMode={exportMode} onExportModeChange={setExportMode} />
+            <DialogFooter className="sm:justify-start">
+              <Button type="button" onClick={() => void runExport()}>
+                {he.manager.reports.exportConfirm}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setExportOpen(false)}>
+                {he.manager.reports.exportCancel}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : (
+        <Drawer open={exportOpen} onOpenChange={setExportOpen} showSwipeHandle swipeDirection="down">
+          <DrawerContent className="overflow-hidden" dir="rtl">
+            <DrawerHeader className="text-start md:text-start">
+              <DrawerTitle className="text-start">{he.manager.reports.exportModalTitlePdf}</DrawerTitle>
+              <DrawerDescription className="text-start">{he.manager.reports.exportModalBody}</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+              <ExportModePicker exportMode={exportMode} onExportModeChange={setExportMode} />
+              <div className="flex flex-row gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-[calc(2.25rem*1.1*1.1)] w-[30%]"
+                  onClick={() => setExportOpen(false)}
+                >
+                  {he.manager.reports.exportCancel}
+                </Button>
+                <Button
+                  type="button"
+                  className="h-[calc(2.25rem*1.1*1.1)] w-[70%]"
+                  onClick={() => void runExport()}
+                >
+                  {he.manager.reports.exportConfirm}
+                </Button>
+              </div>
+            </div>
+          </DrawerContent>
+        </Drawer>
+      )}
     </PageFrame>
+  )
+}
+
+function ExportModePicker({
+  exportMode,
+  onExportModeChange,
+}: {
+  exportMode: ExportMode
+  onExportModeChange: (mode: ExportMode) => void
+}) {
+  return (
+    <div className="flex flex-col gap-2" role="radiogroup" aria-label={he.manager.reports.exportModalBody}>
+      <ExportModeOption
+        pressed={exportMode === "list"}
+        title={he.manager.reports.exportModeList}
+        hint={he.manager.reports.exportModeListHint}
+        onClick={() => onExportModeChange("list")}
+      />
+      <ExportModeOption
+        pressed={exportMode === "contents"}
+        title={he.manager.reports.exportModeContents}
+        hint={he.manager.reports.exportModeContentsHint}
+        onClick={() => onExportModeChange("contents")}
+      />
+    </div>
   )
 }
 
@@ -439,15 +532,22 @@ function ExportModeOption({
       role="radio"
       aria-checked={pressed}
       className={cn(
-        "rounded-md border px-3 py-3 text-start transition-colors",
-        pressed
-          ? "border-foreground bg-muted/50"
-          : "border-border bg-card hover:bg-muted/30"
+        "flex items-start gap-3 rounded-md border border-border px-3 py-3 text-start transition-colors",
+        pressed ? "bg-muted/40" : "bg-card hover:bg-muted/30"
       )}
       onClick={onClick}
     >
-      <span className="block text-sm font-semibold text-foreground">{title}</span>
-      <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+      <span
+        className={cn(
+          "mt-1.5 size-2.5 shrink-0 rounded-full",
+          pressed ? "bg-primary" : "border border-border bg-transparent"
+        )}
+        aria-hidden
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">{title}</span>
+        <span className="mt-1 block text-xs text-muted-foreground">{hint}</span>
+      </span>
     </button>
   )
 }
@@ -485,6 +585,59 @@ function ResultsToolbar({
         label={he.manager.reports.selectedCount}
         value={selectedCount}
       />
+    </div>
+  )
+}
+
+function MobileSelectToolbar({
+  selectedCount,
+  canExport,
+  exporting,
+  onCancel,
+  onExportPdf,
+}: {
+  selectedCount: number
+  canExport: boolean
+  exporting: boolean
+  onCancel: () => void
+  onExportPdf: () => void
+}) {
+  return (
+    <div
+      role="toolbar"
+      aria-label={he.manager.reports.resultsTitle}
+      className="flex w-full items-stretch gap-1"
+    >
+      <span className="inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 text-sm text-foreground">
+        <CheckSquare className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="truncate">
+          {he.manager.reports.selectedCount}
+          <span className="text-muted-foreground"> · </span>
+          <span className="font-semibold tabular-nums">{selectedCount}</span>
+        </span>
+      </span>
+      <button
+        type="button"
+        className="pressable inline-flex min-h-11 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-1.5 text-sm whitespace-nowrap text-foreground transition-colors hover:bg-background/60"
+        onClick={onCancel}
+      >
+        <X className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        {he.manager.reports.exportCancel}
+      </button>
+      <button
+        type="button"
+        disabled={!canExport}
+        className={cn(
+          "pressable inline-flex min-h-11 min-w-0 flex-[1.2] items-center justify-center gap-1.5 rounded-md px-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+          canExport
+            ? "text-primary hover:bg-background/60"
+            : "cursor-not-allowed text-muted-foreground/50"
+        )}
+        onClick={onExportPdf}
+      >
+        <FileText className="size-3.5 shrink-0" aria-hidden />
+        {exporting ? "..." : he.manager.reports.exportPdfShort}
+      </button>
     </div>
   )
 }
@@ -555,6 +708,7 @@ function FilterPanel({
       <div className={cn("grid gap-3", compact ? "grid-cols-1" : "min-w-[56rem] grid-cols-4")}>
         <FilterField label={he.manager.reports.from} icon={CalendarDays}>
           <FilterDate
+            title={he.manager.reports.from}
             value={filters.from}
             placeholder={he.manager.dashboard.pickDate}
             onValueChange={(from) => onPatch({ from })}
@@ -562,6 +716,7 @@ function FilterPanel({
         </FilterField>
         <FilterField label={he.manager.reports.to} icon={CalendarDays}>
           <FilterDate
+            title={he.manager.reports.to}
             value={filters.to}
             placeholder={he.manager.dashboard.pickDate}
             onValueChange={(to) => onPatch({ to })}
@@ -569,6 +724,7 @@ function FilterPanel({
         </FilterField>
         <FilterField label={he.manager.reports.company} icon={Building2}>
           <MultiFilterSelect
+            title={he.manager.reports.company}
             values={filters.companyIds}
             options={options.companies}
             onValuesChange={(companyIds) => onPatch({ companyIds })}
@@ -576,6 +732,7 @@ function FilterPanel({
         </FilterField>
         <FilterField label={he.manager.reports.customer} icon={Users}>
           <MultiFilterSelect
+            title={he.manager.reports.customer}
             values={filters.customerIds}
             options={options.customers}
             onValuesChange={(customerIds) => onPatch({ customerIds })}
@@ -583,6 +740,7 @@ function FilterPanel({
         </FilterField>
         <FilterField label={he.manager.reports.site} icon={MapPin}>
           <MultiFilterSelect
+            title={he.manager.reports.site}
             values={filters.siteIds}
             options={options.sites}
             onValuesChange={(siteIds) => onPatch({ siteIds })}
@@ -598,6 +756,7 @@ function FilterPanel({
         </FilterField>
         <FilterField label={he.manager.reports.leader} icon={UserRound}>
           <MultiFilterSelect
+            title={he.manager.reports.leader}
             values={filters.teamLeaderIds}
             options={options.leaders}
             onValuesChange={(teamLeaderIds) => onPatch({ teamLeaderIds })}
@@ -607,6 +766,7 @@ function FilterPanel({
           <div className="min-w-0 flex-1">
             <FilterField label={he.manager.reports.status} icon={ClipboardList}>
               <MultiFilterSelect
+                title={he.manager.reports.status}
                 values={filters.statuses}
                 options={[
                   { value: "pending", label: he.leader.status.pending },
@@ -623,7 +783,7 @@ function FilterPanel({
               <Button
                 type="button"
                 disabled={!hasActiveFilters}
-                className="h-10 w-full gap-1.5 rounded-md px-2 text-xs"
+                className="h-[calc(2.25rem*1.1*1.1)] w-full gap-1.5 rounded-md px-2 text-xs"
                 onClick={onClear}
               >
                 <X className="size-3.5" aria-hidden />
@@ -774,58 +934,107 @@ function DiaryResultsTable({
   )
 }
 
+function diaryStatusDotClass(diary: ManagerDiarySummary) {
+  if (diary.duplicatedFromId) return "bg-sky-500"
+  if (diary.status === "pending") return "bg-orange-500"
+  if (diary.status === "submitted") return "bg-emerald-500"
+  if (diary.status === "cancelled") return "bg-zinc-500"
+  return null
+}
+
 function DiaryResultRow({
   diary,
-  index,
+  selectMode,
   selected,
   onToggle,
+  onEnterSelectMode,
   onOpen,
 }: {
   diary: ManagerDiarySummary
-  index: number
+  selectMode: boolean
   selected: boolean
   onToggle: (checked: boolean) => void
+  onEnterSelectMode: () => void
   onOpen: (id: string) => void
 }) {
+  const statusDot = diaryStatusDotClass(diary)
+  const longPressTimerRef = useRef<number | null>(null)
+  const longPressTriggeredRef = useRef(false)
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }
+
+  const startLongPress = () => {
+    if (selectMode) return
+    longPressTriggeredRef.current = false
+    clearLongPress()
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressTriggeredRef.current = true
+      onEnterSelectMode()
+      longPressTimerRef.current = null
+    }, 420)
+  }
+
   return (
     <div
       className={cn(
-        "flex items-start gap-2 px-3 py-2.5 text-sm",
+        "flex items-center gap-2.5 px-3 py-[calc(0.75rem*1.15*1.15)] text-sm",
         selected && "bg-muted/30",
         diary.status === "cancelled" && "text-muted-foreground"
       )}
+      onPointerDown={startLongPress}
+      onPointerUp={clearLongPress}
+      onPointerLeave={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        if (!selectMode) onEnterSelectMode()
+      }}
     >
-      <RowCheckbox
-        checked={selected}
-        ariaLabel={he.manager.reports.selectRow}
-        onChange={onToggle}
-      />
       <button
         type="button"
         className={cn(
           "min-w-0 flex-1 text-start",
           diary.status === "cancelled" && "line-through"
         )}
-        onClick={() => onOpen(diary.id)}
+        onClick={() => {
+          if (longPressTriggeredRef.current) {
+            longPressTriggeredRef.current = false
+            return
+          }
+          if (selectMode) {
+            onToggle(!selected)
+            return
+          }
+          onOpen(diary.id)
+        }}
       >
-        <span className="flex items-center justify-between gap-2">
-          <span className="font-medium tabular-nums">
-            <span className="me-2 text-muted-foreground">{index}.</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {statusDot ? (
+            <span className={cn("size-2 shrink-0 rounded-full", statusDot)} aria-hidden />
+          ) : null}
+          <span className="min-w-0 truncate font-medium">
             <BidiText>{formatWorkDateNumeric(diary.workDate)}</BidiText>
-          </span>
-          <span className="shrink-0 text-xs no-underline text-muted-foreground">
-            {diaryStatusLabel(diary.status)}
+            <span className="text-muted-foreground"> · </span>
+            <span>{diary.siteName}</span>
           </span>
         </span>
-        <span className="block truncate font-medium">{diary.siteName}</span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {diary.teamLeaderName} · {diary.workOrderNumber}
-        </span>
-        <span className="block truncate text-xs text-muted-foreground">
-          {diary.companyName} · {diary.customerName}
-          {diary.subSiteName ? ` · ${diary.subSiteName}` : ""}
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {diary.customerName} · {diary.teamLeaderName}
         </span>
       </button>
+      {selectMode ? (
+        <RowCheckbox
+          checked={selected}
+          round
+          ariaLabel={he.manager.reports.selectRow}
+          onChange={onToggle}
+        />
+      ) : null}
     </div>
   )
 }
@@ -834,19 +1043,24 @@ function RowCheckbox({
   checked,
   indeterminate = false,
   disabled = false,
+  round = false,
   ariaLabel,
   onChange,
 }: {
   checked: boolean
   indeterminate?: boolean
   disabled?: boolean
+  round?: boolean
   ariaLabel: string
   onChange: (checked: boolean) => void
 }) {
   return (
     <input
       type="checkbox"
-      className="size-4 cursor-pointer rounded border-border accent-foreground disabled:cursor-not-allowed"
+      className={cn(
+        "size-[1.125rem] shrink-0 cursor-pointer appearance-none border border-border bg-background checked:border-primary checked:bg-primary checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2016%2016%22%20fill=%22none%22%20stroke=%22white%22%20stroke-width=%222.2%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M3.5%208.5%206.5%2011.5%2012.5%204.5%22/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat disabled:cursor-not-allowed accent-primary",
+        round ? "rounded-full" : "rounded-[4px]"
+      )}
       checked={checked}
       disabled={disabled}
       aria-label={ariaLabel}
@@ -879,16 +1093,33 @@ function FilterField({
   )
 }
 
+function useDesktop() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const query = window.matchMedia("(min-width: 1024px)")
+      query.addEventListener("change", onStoreChange)
+      return () => query.removeEventListener("change", onStoreChange)
+    },
+    () => window.matchMedia("(min-width: 1024px)").matches,
+    () => false
+  )
+}
+
 function MultiFilterSelect({
+  title,
   values,
   options,
   onValuesChange,
 }: {
+  title: string
   values: string[]
   options: Array<{ value: string; label: string }>
   onValuesChange: (values: string[]) => void
 }) {
+  const desktop = useDesktop()
+  const [open, setOpen] = useState(false)
   const selectedLabels = options.filter((option) => values.includes(option.value)).map((option) => option.label)
+  const hasSelection = values.length > 0
   const summary =
     selectedLabels.length === 0
       ? he.manager.reports.all
@@ -901,14 +1132,78 @@ function MultiFilterSelect({
     else onValuesChange(values.filter((item) => item !== value))
   }
 
+  const triggerClass = cn(
+    filterControlClass,
+    "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <FilterTriggerControl
+          className={filterControlClass}
+          label={summary}
+          active={hasSelection}
+          resetLabel={he.manager.reports.selectReset}
+          onOpen={() => setOpen(true)}
+          onReset={() => onValuesChange([])}
+        />
+        <MobileFilterPicker
+          open={open}
+          title={title}
+          onClose={() => setOpen(false)}
+          footer={
+            <div className="border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <Button
+                type="button"
+                className="h-[calc(2.25rem*1.1*1.1)] w-full"
+                onClick={() => setOpen(false)}
+              >
+                {he.close}
+              </Button>
+            </div>
+          }
+        >
+          <div className="px-2 pb-2">
+            {options.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {he.manager.reports.emptyOptions}
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {options.map((option) => {
+                  const checked = values.includes(option.value)
+                  return (
+                    <li key={option.value} className="border-b border-border/60 last:border-b-0">
+                      <div className="flex items-center gap-3 px-3 py-3.5">
+                        <button
+                          type="button"
+                          className="pressable min-w-0 flex-1 text-start text-sm font-medium"
+                          onClick={() => toggle(option.value, !checked)}
+                        >
+                          <span className="truncate">{option.label}</span>
+                        </button>
+                        <RowCheckbox
+                          checked={checked}
+                          round
+                          ariaLabel={option.label}
+                          onChange={(next) => toggle(option.value, next)}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        className={cn(
-          filterControlClass,
-          "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
-        )}
-      >
+      <DropdownMenuTrigger className={triggerClass}>
         <span className="min-w-0 flex-1 truncate">{summary}</span>
         <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
@@ -934,48 +1229,80 @@ function MultiFilterSelect({
 }
 
 function FilterDate({
+  title,
   value,
   placeholder,
   onValueChange,
 }: {
+  title: string
   value: string
   placeholder: string
   onValueChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
   const [open, setOpen] = useState(false)
+  const triggerClass = cn(
+    filterControlClass,
+    "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+  )
+  const displayLabel = value ? formatWorkDate(value) : placeholder
+  const calendar = (
+    <>
+      <HebrewCalendar
+        value={value}
+        onSelect={(next) => {
+          onValueChange(next)
+          setOpen(false)
+        }}
+      />
+      {value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-2 h-8 w-full text-xs"
+          onClick={() => {
+            onValueChange("")
+            setOpen(false)
+          }}
+        >
+          {he.manager.dashboard.clearDate}
+        </Button>
+      ) : null}
+    </>
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <FilterTriggerControl
+          className={filterControlClass}
+          label={displayLabel}
+          muted={!value}
+          active={Boolean(value)}
+          resetLabel={he.manager.reports.selectReset}
+          onOpen={() => setOpen(true)}
+          onReset={() => onValueChange("")}
+        />
+        <MobileFilterPicker open={open} title={title} onClose={() => setOpen(false)}>
+          <div className="flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
+            {calendar}
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        className={cn(filterControlClass, "relative flex cursor-pointer items-center pe-9 ps-4 text-start")}
-      >
+      <DropdownMenuTrigger className={triggerClass}>
         <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
-          {value ? formatWorkDate(value) : placeholder}
+          {displayLabel}
         </span>
         <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="w-auto rounded-md p-3">
-        <HebrewCalendar
-          value={value}
-          onSelect={(next) => {
-            onValueChange(next)
-            setOpen(false)
-          }}
-        />
-        {value ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-2 h-8 w-full text-xs"
-            onClick={() => {
-              onValueChange("")
-              setOpen(false)
-            }}
-          >
-            {he.manager.dashboard.clearDate}
-          </Button>
-        ) : null}
+        {calendar}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -1119,51 +1446,20 @@ function buildAppliedExport(
   }
 }
 
-function buildReportFilterChips(db: MockDb, filters: WorkDiarySearchFilters) {
-  const chips: Array<{ id: string; label: string }> = []
-  if (filters.from) chips.push({ id: "from", label: `${he.manager.reports.from}: ${formatWorkDate(filters.from)}` })
-  if (filters.to) chips.push({ id: "to", label: `${he.manager.reports.to}: ${formatWorkDate(filters.to)}` })
-  for (const id of filters.companyIds) {
-    chips.push({ id: `company:${id}`, label: findCompany(db, id)?.name ?? id })
-  }
-  for (const id of filters.customerIds) {
-    chips.push({ id: `customer:${id}`, label: findCustomer(db, id)?.name ?? id })
-  }
-  for (const id of filters.siteIds) {
-    chips.push({
-      id: `site:${id}`,
-      label: db.sites.find((site) => site.id === id)?.name ?? id,
-    })
-  }
-  for (const id of filters.teamLeaderIds) {
-    chips.push({
-      id: `leader:${id}`,
-      label: db.users.find((user) => user.id === id)?.fullName ?? id,
-    })
-  }
-  if (filters.workOrderNumber.trim()) {
-    chips.push({ id: "workOrderNumber", label: filters.workOrderNumber.trim() })
-  }
-  for (const status of filters.statuses) {
-    chips.push({
-      id: `status:${status}`,
-      label: status === "pending" ? he.leader.status.pending : he.leader.status.submitted,
-    })
-  }
-  return chips
-}
-
-function isFilterActive(filters: WorkDiarySearchFilters) {
+function hasActiveSheetFilter(filters: WorkDiarySearchFilters) {
   return Boolean(
     filters.from ||
       filters.to ||
       filters.companyIds.length > 0 ||
       filters.customerIds.length > 0 ||
       filters.siteIds.length > 0 ||
-      filters.workOrderNumber.trim() ||
       filters.teamLeaderIds.length > 0 ||
       filters.statuses.length > 0
   )
+}
+
+function isFilterActive(filters: WorkDiarySearchFilters) {
+  return hasActiveSheetFilter(filters) || Boolean(filters.workOrderNumber.trim())
 }
 
 function normalizeCascade(db: MockDb, filters: WorkDiarySearchFilters): WorkDiarySearchFilters {
@@ -1171,26 +1467,43 @@ function normalizeCascade(db: MockDb, filters: WorkDiarySearchFilters): WorkDiar
   if (next.companyIds.length > 0) {
     next = {
       ...next,
-      customerIds: next.customerIds.filter((id) => {
-        const customer = db.customers.find((item) => item.id === id)
-        return Boolean(customer && next.companyIds.includes(customer.companyId))
-      }),
+      customerIds: next.customerIds.filter((id) => customerMatchesCompanies(db, id, next.companyIds)),
     }
   }
   if (next.siteIds.length > 0) {
     next = {
       ...next,
-      siteIds: next.siteIds.filter((id) => {
-        const site = db.sites.find((item) => item.id === id)
-        if (!site) return false
-        const customer = db.customers.find((item) => item.id === site.customerId)
-        if (next.customerIds.length > 0 && !next.customerIds.includes(site.customerId)) return false
-        if (next.companyIds.length > 0 && (!customer || !next.companyIds.includes(customer.companyId))) {
-          return false
-        }
-        return true
-      }),
+      siteIds: next.siteIds.filter((id) => siteMatchesFilters(db, id, next)),
     }
   }
   return next
+}
+
+function customerMatchesCompanies(db: MockDb, customerId: string, companyIds: string[]) {
+  if (companyIds.length === 0) return true
+  const customer = db.customers.find((item) => item.id === customerId)
+  if (customer?.companyId && companyIds.includes(customer.companyId)) return true
+  return db.diaries.some(
+    (diary) => diary.customerId === customerId && companyIds.includes(diary.companyId)
+  )
+}
+
+function siteMatchesFilters(db: MockDb, siteId: string, filters: WorkDiarySearchFilters) {
+  const site = db.sites.find((item) => item.id === siteId)
+  if (filters.customerIds.length > 0) {
+    if (site?.customerId && filters.customerIds.includes(site.customerId)) return true
+    return db.diaries.some(
+      (diary) => diary.siteId === siteId && filters.customerIds.includes(diary.customerId)
+    )
+  }
+  if (filters.companyIds.length > 0) {
+    if (site?.customerId) {
+      const customer = db.customers.find((item) => item.id === site.customerId)
+      if (customer?.companyId && filters.companyIds.includes(customer.companyId)) return true
+    }
+    return db.diaries.some(
+      (diary) => diary.siteId === siteId && filters.companyIds.includes(diary.companyId)
+    )
+  }
+  return Boolean(site)
 }

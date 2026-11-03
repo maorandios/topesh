@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode } from "react"
+import { useState, useSyncExternalStore, type ReactNode } from "react"
 import {
   Building2,
   CalendarDays,
@@ -13,6 +13,7 @@ import {
   Search,
   UserRound,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -20,6 +21,7 @@ import { PageFrame } from "@/components/motion/page-frame"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -34,12 +36,23 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { duplicateManagerDiary, useManagerDb } from "@/data/browser-store"
-import { filterManagerDiaries, getManagerDiary, listManagerDiaries, type ManagerDiarySummary } from "@/data/manager"
-import { findCompany, findCustomer, findSite, findUser } from "@/data/lookups"
+import {
+  emptyWorkDiarySearchFilters,
+  filterManagerDiaries,
+  getManagerDiary,
+  listManagerDiaries,
+  workDiarySearchOptions,
+  type ManagerDiarySummary,
+  type WorkDiarySearchFilters,
+} from "@/data/manager"
+import type { MockDb } from "@/data/seed"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { useManagerCreate } from "@/features/manager/manager-create-provider"
 import { DiaryPanel, diaryStatusLabel } from "@/features/manager/diary-panel"
-import { FilterChips } from "@/features/manager/mobile-filters/filter-chips"
+import {
+  FilterTriggerControl,
+  MobileFilterPicker,
+} from "@/features/manager/mobile-filters/picker-overlay"
 import { he } from "@/i18n/he"
 import {
   formatMonthTitle,
@@ -52,7 +65,6 @@ import {
   toIsoDate,
 } from "@/lib/format"
 import { BidiText } from "@/lib/bidi"
-import { sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
 type DatePreset = "today" | "week" | "month"
@@ -60,23 +72,35 @@ type QuickFilter = DatePreset | "pending" | "submitted" | "cancelled"
 
 type AdvancedFilters = {
   workDate: string
-  companyId: string
-  customerId: string
-  siteId: string
-  teamLeaderId: string
+  companyIds: string[]
+  customerIds: string[]
+  siteIds: string[]
+  teamLeaderIds: string[]
   period: "" | "month"
   status: "" | "cancelled"
 }
 
 const emptyAdvanced = (): AdvancedFilters => ({
   workDate: "",
-  companyId: "",
-  customerId: "",
-  siteId: "",
-  teamLeaderId: "",
+  companyIds: [],
+  customerIds: [],
+  siteIds: [],
+  teamLeaderIds: [],
   period: "",
   status: "",
 })
+
+function toOrgSearchFilters(filters: AdvancedFilters): WorkDiarySearchFilters {
+  return {
+    ...emptyWorkDiarySearchFilters(),
+    from: filters.workDate,
+    to: filters.workDate,
+    companyIds: filters.companyIds,
+    customerIds: filters.customerIds,
+    siteIds: filters.siteIds,
+    teamLeaderIds: filters.teamLeaderIds,
+  }
+}
 
 export function DashboardScreen() {
   const query = useManagerDb()
@@ -85,10 +109,10 @@ export function DashboardScreen() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [workDate, setWorkDate] = useState("")
-  const [companyId, setCompanyId] = useState("")
-  const [customerId, setCustomerId] = useState("")
-  const [siteId, setSiteId] = useState("")
-  const [teamLeaderId, setTeamLeaderId] = useState("")
+  const [companyIds, setCompanyIds] = useState<string[]>([])
+  const [customerIds, setCustomerIds] = useState<string[]>([])
+  const [siteIds, setSiteIds] = useState<string[]>([])
+  const [teamLeaderIds, setTeamLeaderIds] = useState<string[]>([])
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [draftFilters, setDraftFilters] = useState<AdvancedFilters>(emptyAdvanced)
   const [loaded, setLoaded] = useState({ key: "", extra: 0 })
@@ -137,18 +161,43 @@ export function DashboardScreen() {
     status,
     from: range.from,
     to: range.to,
-    teamLeaderId,
-    companyId,
-    customerId,
-    siteId,
+    teamLeaderIds,
+    companyIds,
+    customerIds,
+    siteIds,
   })
-  const filterKey = [search, quickFilter ?? "", workDate, companyId, customerId, siteId, teamLeaderId].join("|")
+  const filterKey = [
+    search,
+    quickFilter ?? "",
+    workDate,
+    companyIds.join(","),
+    customerIds.join(","),
+    siteIds.join(","),
+    teamLeaderIds.join(","),
+  ].join("|")
   const extra = loaded.key === filterKey ? loaded.extra : 0
   const visibleDiaries = diaries.slice(0, 30 + extra)
   const openDiary = openId ? getManagerDiary(db, openId) : null
-  const customers = db.customers
-  const sites = db.sites
-  const leaders = db.users.filter((user) => user.role === "teamLeader")
+  const appliedAdvanced: AdvancedFilters = {
+    workDate,
+    companyIds,
+    customerIds,
+    siteIds,
+    teamLeaderIds,
+    period: quickFilter === "month" ? "month" : "",
+    status: quickFilter === "cancelled" ? "cancelled" : "",
+  }
+  const options = workDiarySearchOptions(db, toOrgSearchFilters(appliedAdvanced))
+  const draftOptions = workDiarySearchOptions(db, toOrgSearchFilters(draftFilters))
+  const hasActiveSheetFilters = Boolean(
+    workDate ||
+      companyIds.length > 0 ||
+      customerIds.length > 0 ||
+      siteIds.length > 0 ||
+      teamLeaderIds.length > 0 ||
+      quickFilter === "month" ||
+      quickFilter === "cancelled"
+  )
   const desktopQuickFilterOptions: Array<[QuickFilter, string]> = [
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
@@ -163,48 +212,32 @@ export function DashboardScreen() {
     ["pending", he.manager.dashboard.metrics.pending.label],
     ["submitted", he.manager.dashboard.quick.submitted],
   ]
-  const appliedAdvanced: AdvancedFilters = {
-    workDate,
-    companyId,
-    customerId,
-    siteId,
-    teamLeaderId,
-    period: quickFilter === "month" ? "month" : "",
-    status: quickFilter === "cancelled" ? "cancelled" : "",
+
+  const patchFilters = (patch: Partial<AdvancedFilters>) => {
+    const next = normalizeCascade(db, {
+      ...appliedAdvanced,
+      ...patch,
+    })
+    setWorkDate(next.workDate)
+    setCompanyIds(next.companyIds)
+    setCustomerIds(next.customerIds)
+    setSiteIds(next.siteIds)
+    setTeamLeaderIds(next.teamLeaderIds)
+    if (patch.workDate) setQuickFilter(null)
   }
-  const filterChips = [
-    quickFilter === "month"
-      ? { id: "month", label: he.manager.dashboard.quick.month }
-      : null,
-    quickFilter === "cancelled"
-      ? { id: "cancelled", label: he.manager.dashboard.quick.cancelled }
-      : null,
-    workDate
-      ? { id: "workDate", label: `${he.manager.dashboard.date}: ${formatWorkDate(workDate)}` }
-      : null,
-    companyId
-      ? { id: "companyId", label: findCompany(db, companyId)?.name ?? he.manager.dashboard.columns.company }
-      : null,
-    customerId
-      ? { id: "customerId", label: findCustomer(db, customerId)?.name ?? he.manager.dashboard.columns.customer }
-      : null,
-    siteId ? { id: "siteId", label: findSite(db, siteId)?.name ?? he.manager.dashboard.columns.site } : null,
-    teamLeaderId
-      ? {
-          id: "teamLeaderId",
-          label: findUser(db, teamLeaderId)?.fullName ?? he.manager.dashboard.columns.leader,
-        }
-      : null,
-  ].filter(Boolean) as Array<{ id: string; label: string }>
+
+  const patchDraft = (patch: Partial<AdvancedFilters>) => {
+    setDraftFilters((prev) => normalizeCascade(db, { ...prev, ...patch }))
+  }
 
   const resetFilters = () => {
     setQuickFilter(null)
     setSearch("")
     setWorkDate("")
-    setCompanyId("")
-    setCustomerId("")
-    setSiteId("")
-    setTeamLeaderId("")
+    setCompanyIds([])
+    setCustomerIds([])
+    setSiteIds([])
+    setTeamLeaderIds([])
     setDraftFilters(emptyAdvanced())
     setLoaded({ key: "", extra: 0 })
   }
@@ -215,31 +248,30 @@ export function DashboardScreen() {
   }
 
   const applyMobileFilters = () => {
-    setWorkDate(draftFilters.workDate)
-    setCompanyId(draftFilters.companyId)
-    setCustomerId(draftFilters.customerId)
-    setSiteId(draftFilters.siteId)
-    setTeamLeaderId(draftFilters.teamLeaderId)
-    if (draftFilters.period === "month") setQuickFilter("month")
-    else if (draftFilters.status === "cancelled") setQuickFilter("cancelled")
-    else setQuickFilter(null)
+    const next = normalizeCascade(db, draftFilters)
+    setWorkDate(next.workDate)
+    setCompanyIds(next.companyIds)
+    setCustomerIds(next.customerIds)
+    setSiteIds(next.siteIds)
+    setTeamLeaderIds(next.teamLeaderIds)
+    setQuickFilter((prev) => {
+      if (next.period === "month") return "month"
+      if (next.status === "cancelled") return "cancelled"
+      if (next.workDate) return null
+      if (prev === "month" || prev === "cancelled") return null
+      return prev
+    })
     setMobileFiltersOpen(false)
   }
 
-  const removeChip = (id: string) => {
-    if (id === "month" || id === "cancelled") setQuickFilter(null)
-    if (id === "workDate") setWorkDate("")
-    if (id === "companyId") {
-      setCompanyId("")
-      setCustomerId("")
-      setSiteId("")
-    }
-    if (id === "customerId") {
-      setCustomerId("")
-      setSiteId("")
-    }
-    if (id === "siteId") setSiteId("")
-    if (id === "teamLeaderId") setTeamLeaderId("")
+  const clearSheetFilters = () => {
+    if (quickFilter === "month" || quickFilter === "cancelled") setQuickFilter(null)
+    setWorkDate("")
+    setCompanyIds([])
+    setCustomerIds([])
+    setSiteIds([])
+    setTeamLeaderIds([])
+    setDraftFilters(emptyAdvanced())
   }
 
   const renderQuickFilters = (
@@ -323,29 +355,36 @@ export function DashboardScreen() {
             <Input
               value={search}
               placeholder={he.manager.dashboard.searchFree}
-              className="h-10 rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
+              className="h-[calc(2.25rem*1.1*1.1)] rounded-md border-border bg-card pe-3 ps-9 text-sm shadow-none"
               onChange={(event) => setSearch(event.target.value)}
             />
           </div>
-          <Button type="button" variant="outline" size="default" className="h-10 shrink-0" onClick={openMobileFilters}>
+          <Button
+            type="button"
+            variant="outline"
+            size="default"
+            className={cn(
+              "h-[calc(2.25rem*1.1*1.1)] shrink-0",
+              hasActiveSheetFilters && "border-primary text-foreground"
+            )}
+            onClick={openMobileFilters}
+          >
             <Filter className="size-4" aria-hidden />
             {he.manager.reports.filters}
           </Button>
+          {hasActiveSheetFilters ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="default"
+              className="h-[calc(2.25rem*1.1*1.1)] shrink-0 border-primary text-foreground"
+              onClick={clearSheetFilters}
+            >
+              <X className="size-4" aria-hidden />
+              {he.manager.reports.exportCancel}
+            </Button>
+          ) : null}
         </div>
-
-        <FilterChips
-          chips={filterChips}
-          onRemove={removeChip}
-          onClear={() => {
-            if (quickFilter === "month" || quickFilter === "cancelled") setQuickFilter(null)
-            setWorkDate("")
-            setCompanyId("")
-            setCustomerId("")
-            setSiteId("")
-            setTeamLeaderId("")
-          }}
-          clearLabel={he.nav.clearFilters}
-        />
 
         <section className="hidden overflow-x-auto rounded-md border border-border bg-muted/40 px-4 py-4 sm:px-5 lg:block">
           <div className="grid min-w-[56rem] grid-cols-6 gap-3">
@@ -359,59 +398,42 @@ export function DashboardScreen() {
             </FilterField>
             <FilterField label={he.manager.dashboard.date} icon={CalendarDays}>
               <FilterDate
+                title={he.manager.dashboard.date}
                 value={workDate}
                 placeholder={he.manager.dashboard.pickDate}
-                onValueChange={(value) => {
-                  setWorkDate(value)
-                  setQuickFilter(null)
-                }}
+                onValueChange={(value) => patchFilters({ workDate: value, period: "", status: "" })}
               />
             </FilterField>
             <FilterField label={he.manager.dashboard.columns.company} icon={Building2}>
-              <FilterSelect
-                value={companyId}
-                options={[
-                  { value: "", label: he.manager.all },
-                  ...sortSelectOptions(db.companies.map((company) => ({ value: company.id, label: company.name }))),
-                ]}
-                onValueChange={(value) => {
-                  setCompanyId(value)
-                  setCustomerId("")
-                  setSiteId("")
-                }}
+              <MultiFilterSelect
+                title={he.manager.dashboard.columns.company}
+                values={companyIds}
+                options={options.companies}
+                onValuesChange={(next) => patchFilters({ companyIds: next })}
               />
             </FilterField>
             <FilterField label={he.manager.dashboard.columns.customer} icon={Users}>
-              <FilterSelect
-                value={customerId}
-                options={[
-                  { value: "", label: he.manager.all },
-                  ...sortSelectOptions(customers.map((customer) => ({ value: customer.id, label: customer.name }))),
-                ]}
-                onValueChange={(value) => {
-                  setCustomerId(value)
-                  setSiteId("")
-                }}
+              <MultiFilterSelect
+                title={he.manager.dashboard.columns.customer}
+                values={customerIds}
+                options={options.customers}
+                onValuesChange={(next) => patchFilters({ customerIds: next })}
               />
             </FilterField>
             <FilterField label={he.manager.dashboard.columns.site} icon={MapPin}>
-              <FilterSelect
-                value={siteId}
-                options={[
-                  { value: "", label: he.manager.all },
-                  ...sortSelectOptions(sites.map((site) => ({ value: site.id, label: site.name }))),
-                ]}
-                onValueChange={setSiteId}
+              <MultiFilterSelect
+                title={he.manager.dashboard.columns.site}
+                values={siteIds}
+                options={options.sites}
+                onValuesChange={(next) => patchFilters({ siteIds: next })}
               />
             </FilterField>
             <FilterField label={he.manager.dashboard.columns.leader} icon={UserRound}>
-              <FilterSelect
-                value={teamLeaderId}
-                options={[
-                  { value: "", label: he.manager.all },
-                  ...sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName }))),
-                ]}
-                onValueChange={setTeamLeaderId}
+              <MultiFilterSelect
+                title={he.manager.dashboard.columns.leader}
+                values={teamLeaderIds}
+                options={options.leaders}
+                onValuesChange={(next) => patchFilters({ teamLeaderIds: next })}
               />
             </FilterField>
           </div>
@@ -424,35 +446,37 @@ export function DashboardScreen() {
             setOpenId(id)
           }}
         />
-        {diaries.length === 0 ? (
-          <div className="rounded-md border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground lg:hidden">
-            {he.manager.empty}
+        <div className="flex flex-col gap-3 lg:hidden">
+          <div className="overflow-hidden rounded-md border border-border bg-card">
+            <div className="border-b border-border bg-muted/70 px-2 py-2 last:border-b-0">
+              {mobileQuickFilters}
+            </div>
+            {diaries.length === 0 ? null : (
+              <ul>
+                {visibleDiaries.map((diary) => (
+                  <li key={diary.id} className="border-b border-border last:border-b-0">
+                    <DiaryRow diary={diary} onOpen={setOpenId} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
-        ) : (
-          <>
-            <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-              <li className="border-b border-border bg-muted/70 px-2 py-2">
-                {mobileQuickFilters}
-              </li>
-              {visibleDiaries.map((diary) => (
-                <li key={diary.id} className="border-b border-border last:border-b-0">
-                  <DiaryRow diary={diary} onOpen={setOpenId} />
-                </li>
-              ))}
-            </ul>
-            {visibleDiaries.length < diaries.length ? (
-              <Button
-                type="button"
-                size="touch"
-                variant="outline"
-                className="self-center"
-                onClick={() => setLoaded({ key: filterKey, extra: extra + 50 })}
-              >
-                {he.manager.dashboard.loadMore}
-              </Button>
-            ) : null}
-          </>
-        )}
+          {diaries.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border px-3 py-8 text-center text-sm text-muted-foreground">
+              {he.manager.empty}
+            </div>
+          ) : visibleDiaries.length < diaries.length ? (
+            <Button
+              type="button"
+              size="touch"
+              variant="outline"
+              className="self-center"
+              onClick={() => setLoaded({ key: filterKey, extra: extra + 50 })}
+            >
+              {he.manager.dashboard.loadMore}
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       <Sheet open={mobileFiltersOpen} onOpenChange={setMobileFiltersOpen}>
@@ -467,15 +491,15 @@ export function DashboardScreen() {
             <div className="flex flex-col gap-3">
               <FilterField label={he.manager.dashboard.date} icon={CalendarDays}>
                 <FilterDate
+                  title={he.manager.dashboard.date}
                   value={draftFilters.workDate}
                   placeholder={he.manager.dashboard.pickDate}
-                  onValueChange={(value) =>
-                    setDraftFilters((prev) => ({ ...prev, workDate: value, period: "" }))
-                  }
+                  onValueChange={(value) => patchDraft({ workDate: value, period: "" })}
                 />
               </FilterField>
               <FilterField label={he.manager.dashboard.quick.month} icon={CalendarDays}>
                 <FilterSelect
+                  title={he.manager.dashboard.quick.month}
                   value={draftFilters.period}
                   options={[
                     { value: "", label: he.manager.all },
@@ -493,6 +517,7 @@ export function DashboardScreen() {
               </FilterField>
               <FilterField label={he.manager.dashboard.columns.status} icon={Files}>
                 <FilterSelect
+                  title={he.manager.dashboard.columns.status}
                   value={draftFilters.status}
                   options={[
                     { value: "", label: he.manager.all },
@@ -508,47 +533,35 @@ export function DashboardScreen() {
                 />
               </FilterField>
               <FilterField label={he.manager.dashboard.columns.company} icon={Building2}>
-                <FilterSelect
-                  value={draftFilters.companyId}
-                  options={[
-                    { value: "", label: he.manager.all },
-                    ...sortSelectOptions(db.companies.map((company) => ({ value: company.id, label: company.name }))),
-                  ]}
-                  onValueChange={(value) =>
-                    setDraftFilters((prev) => ({ ...prev, companyId: value, customerId: "", siteId: "" }))
-                  }
+                <MultiFilterSelect
+                  title={he.manager.dashboard.columns.company}
+                  values={draftFilters.companyIds}
+                  options={draftOptions.companies}
+                  onValuesChange={(companyIds) => patchDraft({ companyIds })}
                 />
               </FilterField>
               <FilterField label={he.manager.dashboard.columns.customer} icon={Users}>
-                <FilterSelect
-                  value={draftFilters.customerId}
-                  options={[
-                    { value: "", label: he.manager.all },
-                    ...sortSelectOptions(customers.map((customer) => ({ value: customer.id, label: customer.name }))),
-                  ]}
-                  onValueChange={(value) =>
-                    setDraftFilters((prev) => ({ ...prev, customerId: value, siteId: "" }))
-                  }
+                <MultiFilterSelect
+                  title={he.manager.dashboard.columns.customer}
+                  values={draftFilters.customerIds}
+                  options={draftOptions.customers}
+                  onValuesChange={(customerIds) => patchDraft({ customerIds })}
                 />
               </FilterField>
               <FilterField label={he.manager.dashboard.columns.site} icon={MapPin}>
-                <FilterSelect
-                  value={draftFilters.siteId}
-                  options={[
-                    { value: "", label: he.manager.all },
-                    ...sortSelectOptions(sites.map((site) => ({ value: site.id, label: site.name }))),
-                  ]}
-                  onValueChange={(value) => setDraftFilters((prev) => ({ ...prev, siteId: value }))}
+                <MultiFilterSelect
+                  title={he.manager.dashboard.columns.site}
+                  values={draftFilters.siteIds}
+                  options={draftOptions.sites}
+                  onValuesChange={(siteIds) => patchDraft({ siteIds })}
                 />
               </FilterField>
               <FilterField label={he.manager.dashboard.columns.leader} icon={UserRound}>
-                <FilterSelect
-                  value={draftFilters.teamLeaderId}
-                  options={[
-                    { value: "", label: he.manager.all },
-                    ...sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName }))),
-                  ]}
-                  onValueChange={(value) => setDraftFilters((prev) => ({ ...prev, teamLeaderId: value }))}
+                <MultiFilterSelect
+                  title={he.manager.dashboard.columns.leader}
+                  values={draftFilters.teamLeaderIds}
+                  options={draftOptions.leaders}
+                  onValuesChange={(teamLeaderIds) => patchDraft({ teamLeaderIds })}
                 />
               </FilterField>
             </div>
@@ -557,12 +570,12 @@ export function DashboardScreen() {
             <Button
               type="button"
               variant="outline"
-              className="h-10 w-[30%]"
+              className="h-[calc(2.25rem*1.1*1.1)] w-[30%]"
               onClick={() => setDraftFilters(emptyAdvanced())}
             >
               {he.nav.clearFilters}
             </Button>
-            <Button type="button" className="h-10 w-[70%]" onClick={applyMobileFilters}>
+            <Button type="button" className="h-[calc(2.25rem*1.1*1.1)] w-[70%]" onClick={applyMobileFilters}>
               {he.nav.applyFilters}
             </Button>
           </SheetFooter>
@@ -585,21 +598,42 @@ function FilterSegment({
   onClick: () => void
   size?: "default" | "mobile"
 }) {
+  if (size === "mobile") {
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked={pressed}
+        className={cn(
+          "pressable relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center px-1.5 text-center text-sm transition-colors",
+          pressed ? "font-medium text-foreground" : "text-foreground/80 hover:text-foreground"
+        )}
+        onClick={onClick}
+      >
+        <span className="whitespace-nowrap">{label}</span>
+        <span
+          aria-hidden
+          className={cn(
+            "pointer-events-none absolute bottom-1.5 h-0.5 w-6 rounded-full transition-opacity",
+            pressed
+              ? "bg-primary opacity-100 shadow-[0_0_8px_2px_rgb(255_51_0_/_0.55)]"
+              : "opacity-0"
+          )}
+        />
+      </button>
+    )
+  }
+
   return (
     <button
       type="button"
       role="radio"
       aria-checked={pressed}
       className={cn(
-        "pressable whitespace-nowrap transition-colors",
-        size === "mobile"
-          ? "min-h-11 min-w-0 flex-1 rounded-md px-1.5 text-center text-sm"
-          : "h-8 shrink-0 px-3 text-xs",
+        "pressable h-8 shrink-0 whitespace-nowrap px-3 text-xs transition-colors",
         pressed
           ? "bg-primary font-medium text-primary-foreground"
-          : size === "mobile"
-            ? "bg-transparent text-foreground hover:bg-background/60"
-            : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
+          : "bg-transparent text-foreground hover:bg-muted/70 dark:hover:bg-white/10"
       )}
       onClick={onClick}
     >
@@ -736,7 +770,7 @@ function DiaryTable({
 }
 
 const filterControlClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
+  "h-[calc(2.25rem*1.1*1.1)] w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 const EMPTY_FILTER = "__all__"
@@ -761,25 +795,272 @@ function FilterField({
   )
 }
 
+function useDesktop() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const query = window.matchMedia("(min-width: 1024px)")
+      query.addEventListener("change", onStoreChange)
+      return () => query.removeEventListener("change", onStoreChange)
+    },
+    () => window.matchMedia("(min-width: 1024px)").matches,
+    () => false
+  )
+}
+
+function MultiFilterSelect({
+  title,
+  values,
+  options,
+  onValuesChange,
+}: {
+  title: string
+  values: string[]
+  options: Array<{ value: string; label: string }>
+  onValuesChange: (values: string[]) => void
+}) {
+  const desktop = useDesktop()
+  const [open, setOpen] = useState(false)
+  const selectedLabels = options.filter((option) => values.includes(option.value)).map((option) => option.label)
+  const hasSelection = values.length > 0
+  const summary =
+    selectedLabels.length === 0
+      ? he.manager.all
+      : selectedLabels.length === 1
+        ? selectedLabels[0]
+        : `${selectedLabels.length} ${he.manager.reports.selectedOptions}`
+
+  const toggle = (value: string, checked: boolean) => {
+    if (checked) onValuesChange([...values, value])
+    else onValuesChange(values.filter((item) => item !== value))
+  }
+
+  const triggerClass = cn(
+    filterControlClass,
+    "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <FilterTriggerControl
+          className={filterControlClass}
+          label={summary}
+          active={hasSelection}
+          resetLabel={he.manager.dashboard.reset}
+          onOpen={() => setOpen(true)}
+          onReset={() => onValuesChange([])}
+        />
+        <MobileFilterPicker
+          open={open}
+          title={title}
+          onClose={() => setOpen(false)}
+          footer={
+            <div className="border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <Button
+                type="button"
+                className="h-[calc(2.25rem*1.1*1.1)] w-full"
+                onClick={() => setOpen(false)}
+              >
+                {he.close}
+              </Button>
+            </div>
+          }
+        >
+          <div className="px-2 pb-2">
+            {options.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {he.manager.reports.emptyOptions}
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {options.map((option) => {
+                  const checked = values.includes(option.value)
+                  return (
+                    <li key={option.value} className="border-b border-border/60 last:border-b-0">
+                      <div className="flex items-center gap-3 px-3 py-3.5">
+                        <button
+                          type="button"
+                          className="pressable min-w-0 flex-1 text-start text-sm font-medium"
+                          onClick={() => toggle(option.value, !checked)}
+                        >
+                          <span className="truncate">{option.label}</span>
+                        </button>
+                        <RowCheckbox
+                          checked={checked}
+                          round
+                          ariaLabel={option.label}
+                          onChange={(next) => toggle(option.value, next)}
+                        />
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={triggerClass}>
+        <span className="min-w-0 flex-1 truncate">{summary}</span>
+        <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-48 rounded-md p-1.5">
+        {options.length === 0 ? (
+          <div className="px-3 py-2 text-sm text-muted-foreground">{he.manager.reports.emptyOptions}</div>
+        ) : (
+          options.map((option) => (
+            <DropdownMenuCheckboxItem
+              key={option.value}
+              checked={values.includes(option.value)}
+              className="rounded-md px-3 py-2"
+              onSelect={(event) => event.preventDefault()}
+              onCheckedChange={(checked) => toggle(option.value, checked === true)}
+            >
+              <span className="truncate">{option.label}</span>
+            </DropdownMenuCheckboxItem>
+          ))
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function RowCheckbox({
+  checked,
+  round = false,
+  ariaLabel,
+  onChange,
+}: {
+  checked: boolean
+  round?: boolean
+  ariaLabel: string
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <input
+      type="checkbox"
+      className={cn(
+        "size-[1.125rem] shrink-0 cursor-pointer appearance-none border border-border bg-background checked:border-primary checked:bg-primary checked:bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%2016%2016%22%20fill=%22none%22%20stroke=%22white%22%20stroke-width=%222.2%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M3.5%208.5%206.5%2011.5%2012.5%204.5%22/%3E%3C/svg%3E')] checked:bg-center checked:bg-no-repeat accent-primary",
+        round ? "rounded-full" : "rounded-[4px]"
+      )}
+      checked={checked}
+      aria-label={ariaLabel}
+      onClick={(event) => event.stopPropagation()}
+      onChange={(event) => onChange(event.target.checked)}
+    />
+  )
+}
+
+function normalizeCascade(db: MockDb, filters: AdvancedFilters): AdvancedFilters {
+  let next = { ...filters }
+  if (next.companyIds.length > 0) {
+    next = {
+      ...next,
+      customerIds: next.customerIds.filter((id) => {
+        const customer = db.customers.find((item) => item.id === id)
+        if (customer?.companyId && next.companyIds.includes(customer.companyId)) return true
+        return db.diaries.some(
+          (diary) => diary.customerId === id && next.companyIds.includes(diary.companyId)
+        )
+      }),
+    }
+  }
+  if (next.siteIds.length > 0) {
+    next = {
+      ...next,
+      siteIds: next.siteIds.filter((id) => {
+        const site = db.sites.find((item) => item.id === id)
+        if (next.customerIds.length > 0) {
+          if (site?.customerId && next.customerIds.includes(site.customerId)) return true
+          return db.diaries.some(
+            (diary) => diary.siteId === id && next.customerIds.includes(diary.customerId)
+          )
+        }
+        if (next.companyIds.length > 0) {
+          if (site?.customerId) {
+            const customer = db.customers.find((item) => item.id === site.customerId)
+            if (customer?.companyId && next.companyIds.includes(customer.companyId)) return true
+          }
+          return db.diaries.some(
+            (diary) => diary.siteId === id && next.companyIds.includes(diary.companyId)
+          )
+        }
+        return Boolean(site)
+      }),
+    }
+  }
+  return next
+}
+
 function FilterSelect({
+  title,
   value,
   options,
   onValueChange,
 }: {
+  title: string
   value: string
   options: Array<{ value: string; label: string }>
   onValueChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
+  const [open, setOpen] = useState(false)
   const selected = options.find((option) => option.value === value)?.label ?? he.manager.all
+  const hasSelection = Boolean(value)
+  const triggerClass = cn(
+    filterControlClass,
+    "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <FilterTriggerControl
+          className={filterControlClass}
+          label={selected}
+          active={hasSelection}
+          resetLabel={he.manager.dashboard.reset}
+          onOpen={() => setOpen(true)}
+          onReset={() => onValueChange("")}
+        />
+        <MobileFilterPicker open={open} title={title} onClose={() => setOpen(false)}>
+          <div className="px-2 pb-2">
+            <ul className="flex flex-col">
+              {options.map((option) => {
+                const active = (option.value || "") === (value || "")
+                return (
+                  <li key={option.value || EMPTY_FILTER} className="border-b border-border/60 last:border-b-0">
+                    <button
+                      type="button"
+                      className={cn(
+                        "pressable flex w-full items-center px-3 py-3.5 text-start text-sm font-medium",
+                        active && "text-primary"
+                      )}
+                      onClick={() => {
+                        onValueChange(option.value)
+                        setOpen(false)
+                      }}
+                    >
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        className={cn(
-          filterControlClass,
-          "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
-        )}
-      >
+      <DropdownMenuTrigger className={triggerClass}>
         <span className="min-w-0 flex-1 truncate">{selected}</span>
         <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
@@ -804,48 +1085,80 @@ function FilterSelect({
 }
 
 function FilterDate({
+  title,
   value,
   placeholder,
   onValueChange,
 }: {
+  title: string
   value: string
   placeholder: string
   onValueChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
   const [open, setOpen] = useState(false)
+  const triggerClass = cn(
+    filterControlClass,
+    "relative flex cursor-pointer items-center pe-9 ps-4 text-start"
+  )
+  const displayLabel = value ? formatWorkDate(value) : placeholder
+  const calendar = (
+    <>
+      <HebrewCalendar
+        value={value}
+        onSelect={(next) => {
+          onValueChange(next)
+          setOpen(false)
+        }}
+      />
+      {value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-2 h-8 w-full text-xs"
+          onClick={() => {
+            onValueChange("")
+            setOpen(false)
+          }}
+        >
+          {he.manager.dashboard.clearDate}
+        </Button>
+      ) : null}
+    </>
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <FilterTriggerControl
+          className={filterControlClass}
+          label={displayLabel}
+          muted={!value}
+          active={Boolean(value)}
+          resetLabel={he.manager.dashboard.reset}
+          onOpen={() => setOpen(true)}
+          onReset={() => onValueChange("")}
+        />
+        <MobileFilterPicker open={open} title={title} onClose={() => setOpen(false)}>
+          <div className="flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1">
+            {calendar}
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger
-        className={cn(filterControlClass, "relative flex cursor-pointer items-center pe-9 ps-4 text-start")}
-      >
+      <DropdownMenuTrigger className={triggerClass}>
         <span className={cn("min-w-0 flex-1 truncate", !value && "text-muted-foreground")}>
-          {value ? formatWorkDate(value) : placeholder}
+          {displayLabel}
         </span>
         <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="w-auto rounded-md p-3">
-        <HebrewCalendar
-          value={value}
-          onSelect={(next) => {
-            onValueChange(next)
-            setOpen(false)
-          }}
-        />
-        {value ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-2 h-8 w-full text-xs"
-            onClick={() => {
-              onValueChange("")
-              setOpen(false)
-            }}
-          >
-            {he.manager.dashboard.clearDate}
-          </Button>
-        ) : null}
+        {calendar}
       </DropdownMenuContent>
     </DropdownMenu>
   )

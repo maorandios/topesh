@@ -196,7 +196,7 @@ export function CatalogScreen() {
                 role="tab"
                 aria-selected={selected}
                 className={cn(
-                  "pressable flex aspect-square w-full flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors lg:aspect-auto lg:min-h-[7.5rem]",
+                  "pressable flex min-h-[6.75rem] w-full flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors lg:min-h-[7.5rem]",
                   selected
                     ? "border-primary bg-primary/10 text-foreground shadow-[0_0_0_1px_rgb(255_51_0_/0.25)]"
                     : "border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -734,7 +734,7 @@ function CreateCard({
       </button>
       <div
         className={cn(
-          "grid transition-[grid-template-rows] duration-300 ease-out",
+          "grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         )}
       >
@@ -745,8 +745,8 @@ function CreateCard({
         >
           <div
             className={cn(
-              "transition-[opacity,transform] duration-300 ease-out",
-              open ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+              "transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none",
+              open ? "translate-y-0 opacity-100" : "-translate-y-2 opacity-0"
             )}
           >
             <EditorForm db={db} editor={create} error={error} onChange={onChange} onSave={onSave} />
@@ -910,7 +910,7 @@ function EditorForm({
 }) {
   return (
     <>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+      <div className="min-h-0 overflow-y-auto px-4 py-3">
         <div className="flex flex-col gap-4 text-sm">
           <EditorField icon={editor.kind === "component" ? Boxes : Layers} label={he.manager.catalog.name}>
             <Input

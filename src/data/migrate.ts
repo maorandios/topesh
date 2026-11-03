@@ -41,7 +41,7 @@ type LegacyDb = {
 
 export function parseDatabase(value: unknown): MockDb | null {
   if (isV7(value)) {
-    return {
+    return repairOrgLinks({
       ...value,
       companies: value.companies.map((item, index) => withCreatedAt(item, index)),
       customers: value.customers.map((item, index) => withCreatedAt(item, index)),
@@ -53,7 +53,7 @@ export function parseDatabase(value: unknown): MockDb | null {
           (diary.status === "cancelled" ? diary.createdAt : null),
         duplicatedFromId: diary.duplicatedFromId ?? null,
       })),
-    }
+    })
   }
   // Refresh v5/v6 browser demos to the richer seed diaries.
   if (isV6(value) || isV5(value)) return createSeed()
@@ -144,6 +144,59 @@ function withActiveCustomers(items: LegacyOrgCustomer[]): Customer[] {
       index
     )
   )
+}
+
+/** Backfill empty customer/site parent ids from seed catalog, then from diary usage. */
+function repairOrgLinks(db: MockDb): MockDb {
+  const seed = createSeed()
+  const seedCustomerCompany = new Map(seed.customers.map((item) => [item.id, item.companyId]))
+  const seedSiteCustomer = new Map(seed.sites.map((item) => [item.id, item.customerId]))
+  const customerCompanyCounts = new Map<string, Map<string, number>>()
+  const siteCustomerCounts = new Map<string, Map<string, number>>()
+
+  for (const diary of db.diaries) {
+    if (diary.customerId && diary.companyId) {
+      const counts = customerCompanyCounts.get(diary.customerId) ?? new Map<string, number>()
+      counts.set(diary.companyId, (counts.get(diary.companyId) ?? 0) + 1)
+      customerCompanyCounts.set(diary.customerId, counts)
+    }
+    if (diary.siteId && diary.customerId) {
+      const counts = siteCustomerCounts.get(diary.siteId) ?? new Map<string, number>()
+      counts.set(diary.customerId, (counts.get(diary.customerId) ?? 0) + 1)
+      siteCustomerCounts.set(diary.siteId, counts)
+    }
+  }
+
+  const customers = db.customers.map((customer) => {
+    if (customer.companyId) return customer
+    const fromSeed = seedCustomerCompany.get(customer.id)
+    if (fromSeed) return { ...customer, companyId: fromSeed }
+    const fromDiary = mostCommonId(customerCompanyCounts.get(customer.id))
+    return fromDiary ? { ...customer, companyId: fromDiary } : customer
+  })
+
+  const sites = db.sites.map((site) => {
+    if (site.customerId) return site
+    const fromSeed = seedSiteCustomer.get(site.id)
+    if (fromSeed) return { ...site, customerId: fromSeed }
+    const fromDiary = mostCommonId(siteCustomerCounts.get(site.id))
+    return fromDiary ? { ...site, customerId: fromDiary } : site
+  })
+
+  return { ...db, customers, sites }
+}
+
+function mostCommonId(counts: Map<string, number> | undefined): string | null {
+  if (!counts || counts.size === 0) return null
+  let bestId: string | null = null
+  let bestCount = -1
+  for (const [id, count] of counts) {
+    if (count > bestCount) {
+      bestId = id
+      bestCount = count
+    }
+  }
+  return bestId
 }
 
 function withActiveSites(items: LegacyOrgSite[]): Site[] {

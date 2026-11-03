@@ -199,7 +199,13 @@ function readSnapshot(storage: KeyValueStorage): RepositorySnapshot {
     const parsed: unknown = JSON.parse(raw)
     const migrated = parseDatabase(parsed)
     if (!migrated) return { status: "error" }
-    if (!isCurrentVersion(parsed)) {
+    const parsedDb = parsed as MockDb
+    const needsOrgRepair =
+      Array.isArray(parsedDb.customers) &&
+      Array.isArray(parsedDb.sites) &&
+      (parsedDb.customers.some((item) => !item.companyId) ||
+        parsedDb.sites.some((item) => !item.customerId))
+    if (!isCurrentVersion(parsed) || needsOrgRepair) {
       storage.setItem(MOCK_DB_KEY, JSON.stringify(migrated))
     }
     return { status: "ready", db: migrated }

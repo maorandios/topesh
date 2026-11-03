@@ -42,10 +42,10 @@ export type DiaryFilters = {
   status: "all" | DiaryStatus
   from: string
   to: string
-  teamLeaderId: string
-  companyId: string
-  customerId: string
-  siteId: string
+  teamLeaderIds: string[]
+  companyIds: string[]
+  customerIds: string[]
+  siteIds: string[]
 }
 
 export type TeamLeaderInput = {
@@ -136,10 +136,10 @@ export function filterManagerDiaries(db: MockDb, filters: DiaryFilters): Manager
     if (filters.status !== "all" && diary.status !== filters.status) return false
     if (filters.from && diary.workDate < filters.from) return false
     if (filters.to && diary.workDate > filters.to) return false
-    if (filters.teamLeaderId && diary.teamLeaderId !== filters.teamLeaderId) return false
-    if (filters.companyId && diary.companyId !== filters.companyId) return false
-    if (filters.customerId && diary.customerId !== filters.customerId) return false
-    if (filters.siteId && diary.siteId !== filters.siteId) return false
+    if (filters.teamLeaderIds.length > 0 && !filters.teamLeaderIds.includes(diary.teamLeaderId)) return false
+    if (filters.companyIds.length > 0 && !filters.companyIds.includes(diary.companyId)) return false
+    if (filters.customerIds.length > 0 && !filters.customerIds.includes(diary.customerId)) return false
+    if (filters.siteIds.length > 0 && !filters.siteIds.includes(diary.siteId)) return false
     if (!query) return true
     return [
       diary.workOrderNumber,
