@@ -2,6 +2,9 @@ export const he = {
   appName: "טופ-אש",
   appDescription: "יומן עבודה תפעולי לצוותי התקנה",
   close: "סגירה",
+  pullToRefresh: {
+    refreshing: "מרענן",
+  },
   back: "חזרה",
   continue: "המשך",
   sample: "לדוגמה",
@@ -23,6 +26,7 @@ export const he = {
       "המתג נשמר רק בדפדפן זה לצורך פיתוח. אין כאן אימות זהות, ואין להסתמך עליו כאבטחה. הוא יוסר לפני הפעלת ההתחברות.",
     aboutAction: "הבנתי",
     switch: "החלפת תפקיד",
+    switchHint: "מעבר בין מנהל לראש צוות לצורך בדיקות בפיתוח.",
     email: "דוא״ל",
     phone: "טלפון",
   },

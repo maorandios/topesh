@@ -86,6 +86,13 @@ export function useRepositorySnapshot() {
   return useSyncExternalStore(subscribe, getClientSnapshot, () => SERVER_SNAPSHOT)
 }
 
+/** Re-read the local mock DB and notify subscribers (used by pull-to-refresh). */
+export function reloadBrowserStore() {
+  const repo = ensureRepository()
+  repo.reload()
+  cached = repo.getSnapshot()
+}
+
 export function resetLeaderStore() {
   ensureRepository().reset()
 }

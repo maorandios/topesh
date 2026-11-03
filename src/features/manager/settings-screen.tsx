@@ -1,7 +1,9 @@
 "use client"
 
 import { PageFrame } from "@/components/motion/page-frame"
+import { AppLink } from "@/components/shell/app-link"
 import { ThemeModePicker } from "@/features/theme/theme-toggle"
+import { devRoleSwitcherEnabled } from "@/features/dev-role/users"
 import { he } from "@/i18n/he"
 
 export function SettingsScreen() {
@@ -20,6 +22,22 @@ export function SettingsScreen() {
           </div>
           <ThemeModePicker />
         </section>
+
+        {devRoleSwitcherEnabled ? (
+          <section className="flex flex-col gap-3 rounded-md border border-border bg-card p-4 lg:hidden">
+            <div className="flex flex-col gap-1">
+              <h2 className="text-sm font-semibold tracking-tight">{he.role.switch}</h2>
+              <p className="text-sm text-muted-foreground">{he.role.switchHint}</p>
+            </div>
+            <AppLink
+              href="/"
+              direction="back"
+              className="pressable flex min-h-11 items-center justify-center rounded-xl border border-border px-3 text-sm text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            >
+              {he.role.switch}
+            </AppLink>
+          </section>
+        ) : null}
       </div>
     </PageFrame>
   )

@@ -4,7 +4,6 @@ import {
   ClipboardList,
   FileSpreadsheet,
   GitCompare,
-  History,
   Settings,
   SquareKanbanPlus,
 } from "lucide-react"
@@ -90,10 +89,10 @@ export const leaderNav: NavItem[] = [
     icon: ClipboardList,
   },
   {
-    href: "/leader/history",
-    label: he.nav.history,
-    shortLabel: he.nav.history,
-    icon: History,
+    href: "/leader/settings",
+    label: he.nav.settings,
+    shortLabel: he.nav.settings,
+    icon: Settings,
   },
 ]
 
