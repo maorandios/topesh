@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { useLeaderDiaries } from "@/data/browser-store"
 import type { DiaryStatus } from "@/domain/types"
 import { DiaryCard } from "@/features/leader/diary-card"
+import { LeaderDiaryPanel } from "@/features/leader/leader-diary-panel"
 import { LeaderLoading, LeaderStoreError } from "@/features/leader/leader-states"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
@@ -18,6 +19,7 @@ export function LeaderHistoryScreen() {
   const [status, setStatus] = useState<(typeof filters)[number]>("all")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  const [openId, setOpenId] = useState<string | null>(null)
 
   if (query.status === "loading") return <LeaderLoading />
   if (query.status === "error") return <LeaderStoreError />
@@ -35,7 +37,7 @@ export function LeaderHistoryScreen() {
 
   return (
     <PageFrame>
-      <div className="flex flex-col gap-4 px-4 py-5">
+      <div className="flex flex-col gap-3 px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight">{he.leader.history.title}</h1>
           <p className="text-sm leading-6 text-muted-foreground">{he.leader.history.body}</p>
@@ -103,21 +105,31 @@ export function LeaderHistoryScreen() {
           <p className="text-sm leading-6 text-muted-foreground">{he.leader.history.rangeInvalid}</p>
         ) : null}
 
-        {filtered.length === 0 ? (
-          <div className="flex flex-col gap-1">
-            <h2 className="text-base font-medium">{he.leader.history.emptyTitle}</h2>
-            <p className="text-sm leading-6 text-muted-foreground">{he.leader.history.emptyBody}</p>
-          </div>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {filtered.map((diary) => (
-              <li key={diary.id}>
-                <DiaryCard diary={diary} />
-              </li>
-            ))}
-          </ul>
-        )}
+        <div className="overflow-hidden rounded-md border border-border bg-card">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+              <p className="font-medium text-foreground">{he.leader.history.emptyTitle}</p>
+              <p className="mt-1">{he.leader.history.emptyBody}</p>
+            </div>
+          ) : (
+            <ul>
+              {filtered.map((diary) => (
+                <li key={diary.id} className="border-b border-border last:border-b-0">
+                  <DiaryCard diary={diary} onOpen={setOpenId} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
+
+      <LeaderDiaryPanel
+        diaryId={openId}
+        open={Boolean(openId)}
+        onOpenChange={(next) => {
+          if (!next) setOpenId(null)
+        }}
+      />
     </PageFrame>
   )
 }

@@ -1,40 +1,53 @@
-import { AppLink } from "@/components/shell/app-link"
 import type { LeaderDiarySummary } from "@/data/repository"
 import { he } from "@/i18n/he"
 import { formatWorkDate } from "@/lib/format"
 import { cn } from "cn"
 
-export function DiaryCard({ diary }: { diary: LeaderDiarySummary }) {
-  const pending = diary.status === "pending"
+function statusDotClass(status: LeaderDiarySummary["status"]) {
+  if (status === "pending") return "bg-orange-500"
+  if (status === "submitted") return "bg-emerald-500"
+  if (status === "cancelled") return "bg-zinc-500"
+  return null
+}
+
+function statusLabel(status: LeaderDiarySummary["status"]) {
+  if (status === "pending") return he.leader.status.pending
+  if (status === "cancelled") return he.leader.status.cancelled
+  return he.leader.status.submitted
+}
+
+export function DiaryCard({
+  diary,
+  onOpen,
+}: {
+  diary: LeaderDiarySummary
+  onOpen: (id: string) => void
+}) {
+  const place = [diary.siteName, diary.subSiteName].filter(Boolean).join(" · ")
+  const statusDot = statusDotClass(diary.status)
+
   return (
-    <AppLink
-      href={`/leader/diaries/${diary.id}`}
-      className="pressable flex flex-col gap-3 rounded-2xl border border-border bg-card p-4"
+    <button
+      type="button"
+      className={cn(
+        "flex w-full min-w-0 flex-col gap-1 px-3 py-2.5 text-start text-sm",
+        diary.status === "cancelled" && "text-muted-foreground line-through"
+      )}
+      onClick={() => onOpen(diary.id)}
     >
-      <span className="flex items-start justify-between gap-3">
-        <span className="text-base font-medium">{formatWorkDate(diary.workDate)}</span>
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center rounded-full px-2 py-1 text-xs",
-            pending
-              ? "border border-border text-muted-foreground"
-              : "bg-primary text-primary-foreground"
-          )}
-        >
-          {pending
-            ? he.leader.status.pending
-            : diary.status === "cancelled"
-              ? he.leader.status.cancelled
-              : he.leader.status.submitted}
+      <span className="flex items-center justify-between gap-2">
+        <span className="inline-flex min-w-0 items-center gap-2 truncate font-medium">
+          {statusDot ? (
+            <span className={cn("size-2 shrink-0 rounded-full", statusDot)} aria-hidden />
+          ) : null}
+          <span className="truncate">{formatWorkDate(diary.workDate)}</span>
         </span>
+        <span className="shrink-0 text-xs text-muted-foreground">{statusLabel(diary.status)}</span>
       </span>
-      <span className="flex flex-col gap-1 text-sm">
-        <span>{diary.siteName}</span>
-        <span className="text-muted-foreground">{diary.subSiteName}</span>
-      </span>
-      <span className="text-sm font-medium">
-        {pending ? he.leader.fill : he.leader.view}
-      </span>
-    </AppLink>
+      {place ? <span className="truncate text-xs text-muted-foreground">{place}</span> : null}
+      {diary.projectName ? (
+        <span className="truncate text-xs text-muted-foreground">{diary.projectName}</span>
+      ) : null}
+    </button>
   )
 }

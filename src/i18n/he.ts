@@ -329,6 +329,9 @@ export const he = {
     home: {
       title: "היומנים שלי",
       assignedTo: "היומנים של",
+      submittedTotal: "הוגש",
+      pendingTotal: "ממתין לדיווח",
+      diariesTotal: "יומנים",
       emptyTitle: "אין יומנים מוקצים",
       emptyBody: "כשיוקצה יומן לראש הצוות הזה, הוא יופיע כאן.",
     },
@@ -372,7 +375,7 @@ export const he = {
       notesTitle: "הערות",
       notesPlaceholder: "הערות חופשיות, אם יש",
       submit: "הגשת יומן",
-      submittedBanner: "היומן הוגש ואינו ניתן לעריכה.",
+      submittedBanner: "היומן הוגש ואינו ניתן לעריכה יותר",
       cancelledBanner: "היומן בוטל ואינו ניתן לעריכה.",
       submittedOn: "הוגש בתאריך",
       readOnlyWorkers: "לא נוספו עובדים.",

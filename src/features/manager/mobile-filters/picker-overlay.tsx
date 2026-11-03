@@ -20,12 +20,14 @@ export function MobileFilterPicker({
   onClose,
   children,
   footer,
+  showClose = true,
 }: {
   open: boolean
   title: string
   onClose: () => void
   children: ReactNode
   footer?: ReactNode
+  showClose?: boolean
 }) {
   const mounted = useIsClient()
 
@@ -61,14 +63,16 @@ export function MobileFilterPicker({
       <div className="relative z-10 flex max-h-[85vh] flex-col overflow-hidden rounded-t-2xl border-t border-border bg-card text-card-foreground shadow-lg dark:bg-[#16161a]">
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <h2 className="min-w-0 flex-1 text-start font-heading text-base font-medium">{title}</h2>
-          <button
-            type="button"
-            className="pressable inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground"
-            onClick={onClose}
-            aria-label={he.close}
-          >
-            <X className="size-4" aria-hidden />
-          </button>
+          {showClose ? (
+            <button
+              type="button"
+              className="pressable inline-flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground"
+              onClick={onClose}
+              aria-label={he.close}
+            >
+              <X className="size-4" aria-hidden />
+            </button>
+          ) : null}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
         {footer}

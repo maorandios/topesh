@@ -61,16 +61,24 @@ export function DiaryCreatePanel({
   db,
   open,
   onOpenChange,
+  fixedTeamLeaderId,
 }: {
   db: MockDb
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** When set (team leader self-create), hide the leader picker and lock the assignee. */
+  fixedTeamLeaderId?: string
 }) {
   const desktop = useDesktop()
   const title = he.manager.panel.createDiary
   const body = open ? (
     <PanelNoticeProvider>
-      <CreateForm key={String(open)} db={db} onCreated={() => onOpenChange(false)} />
+      <CreateForm
+        key={String(open)}
+        db={db}
+        fixedTeamLeaderId={fixedTeamLeaderId}
+        onCreated={() => onOpenChange(false)}
+      />
     </PanelNoticeProvider>
   ) : null
   if (desktop) {
@@ -105,9 +113,11 @@ export function DiaryCreatePanel({
 function CreateForm({
   db,
   onCreated,
+  fixedTeamLeaderId,
 }: {
   db: MockDb
   onCreated?: () => void
+  fixedTeamLeaderId?: string
 }) {
   const notice = usePanelNotice()
   const leaders = db.users.filter((user) => user.role === "teamLeader" && user.isActive)
@@ -115,7 +125,7 @@ function CreateForm({
   const customers = db.customers.filter((item) => item.isActive)
   const sites = db.sites.filter((item) => item.isActive)
   const orderRef = useRef<HTMLInputElement>(null)
-  const [leaderId, setLeaderId] = useState("")
+  const [leaderId, setLeaderId] = useState(fixedTeamLeaderId ?? "")
   const [workDate, setWorkDate] = useState(jerusalemToday())
   const [companyId, setCompanyId] = useState("")
   const [customerId, setCustomerId] = useState("")
@@ -124,6 +134,7 @@ function CreateForm({
   const [projectName, setProjectName] = useState("")
   const [workOrder, setWorkOrder] = useState("")
   const [showMissing, setShowMissing] = useState(false)
+  const lockLeader = Boolean(fixedTeamLeaderId)
 
   const missing = createMissingFields({
     leaderId,
@@ -169,7 +180,7 @@ function CreateForm({
       return
     }
     setShowMissing(false)
-    setLeaderId("")
+    if (!lockLeader) setLeaderId("")
     setCompanyId("")
     setCustomerId("")
     setSiteId("")
@@ -196,15 +207,17 @@ function CreateForm({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         <div className="flex flex-col gap-4 text-sm">
-          <EditorField icon={UserRound} label={he.manager.diaries.leader} missing={highlighted.has("leader")}>
-            <CreateSelect
-              value={leaderId}
-              placeholder={he.manager.select}
-              missing={highlighted.has("leader")}
-              options={sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName })))}
-              onValueChange={setLeaderId}
-            />
-          </EditorField>
+          {lockLeader ? null : (
+            <EditorField icon={UserRound} label={he.manager.diaries.leader} missing={highlighted.has("leader")}>
+              <CreateSelect
+                value={leaderId}
+                placeholder={he.manager.select}
+                missing={highlighted.has("leader")}
+                options={sortSelectOptions(leaders.map((leader) => ({ value: leader.id, label: leader.fullName })))}
+                onValueChange={setLeaderId}
+              />
+            </EditorField>
+          )}
           <EditorField icon={CalendarDays} label={he.manager.diaries.date} missing={highlighted.has("workDate")}>
             <HebrewDatePicker
               value={workDate}

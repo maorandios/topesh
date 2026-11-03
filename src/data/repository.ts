@@ -16,6 +16,7 @@ export type LeaderDiarySummary = {
   workDate: string
   siteName: string
   subSiteName: string
+  projectName: string
   status: DiaryStatus
 }
 
@@ -75,12 +76,13 @@ export function createMemoryStorage(initial?: Record<string, string>): KeyValueS
 
 export function listForLeader(db: MockDb, teamLeaderId: string): LeaderDiarySummary[] {
   return db.diaries
-    .filter((diary) => diary.teamLeaderId === teamLeaderId && diary.status !== "cancelled")
+    .filter((diary) => diary.teamLeaderId === teamLeaderId)
     .map((diary) => ({
       id: diary.id,
       workDate: diary.workDate,
       siteName: findSite(db, diary.siteId)?.name ?? "",
       subSiteName: diary.subSiteName,
+      projectName: diary.projectName,
       status: diary.status,
     }))
     .sort(compareSummaries)

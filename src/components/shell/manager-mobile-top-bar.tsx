@@ -4,8 +4,12 @@ import { Flame, Settings } from "lucide-react"
 import { AppLink } from "@/components/shell/app-link"
 import { he } from "@/i18n/he"
 
-/** Manager-only mobile chrome. Hidden at lg+ so desktop SideNav stays untouched. */
-export function ManagerMobileTopBar() {
+/** Mobile chrome for manager / team-leader. Hidden at lg+ so desktop SideNav stays untouched. */
+export function ManagerMobileTopBar({
+  settingsHref = "/manager/settings",
+}: {
+  settingsHref?: string
+}) {
   return (
     <header
       className="app-chrome sticky top-0 z-30 flex min-h-14 items-center justify-between gap-3 border-b border-border px-4 pt-[env(safe-area-inset-top)] lg:hidden"
@@ -16,7 +20,7 @@ export function ManagerMobileTopBar() {
         <span className="truncate">{he.appName}</span>
       </p>
       <AppLink
-        href="/manager/settings"
+        href={settingsHref}
         className="pressable inline-flex size-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         aria-label={he.nav.settings}
       >

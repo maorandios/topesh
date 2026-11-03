@@ -3,16 +3,15 @@
 import { Plus } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { AppLink } from "@/components/shell/app-link"
-import { isNavActive, leaderNav, managerMobileNav } from "@/components/shell/nav"
+import { isNavActive, managerMobileNav } from "@/components/shell/nav"
 import { useManagerCreate } from "@/features/manager/manager-create-provider"
 import { useKeyboardOpen } from "@/lib/use-keyboard-open"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
-import { devRoleSwitcherEnabled } from "@/features/dev-role/users"
 
 export function BottomNav({ variant }: { variant: "manager" | "leader" }) {
-  if (variant === "manager") return <ManagerBottomNav />
-  return <LeaderBottomNav />
+  if (variant === "leader") return null
+  return <ManagerBottomNav />
 }
 
 function ManagerBottomNav() {
@@ -49,51 +48,6 @@ function ManagerBottomNav() {
         </button>
         <MobileNavLink item={rightA!} pathname={pathname} />
         <MobileNavLink item={rightB!} pathname={pathname} />
-      </div>
-    </nav>
-  )
-}
-
-function LeaderBottomNav() {
-  const pathname = usePathname()
-  const keyboardOpen = useKeyboardOpen()
-  const columns = devRoleSwitcherEnabled ? "grid-cols-3" : "grid-cols-2"
-
-  return (
-    <nav
-      className={cn(
-        "app-chrome fixed inset-x-0 bottom-0 z-40 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden",
-        keyboardOpen && "hidden"
-      )}
-      style={{ viewTransitionName: "app-bottom-nav" }}
-    >
-      <div className={cn("grid", columns)}>
-        {leaderNav.map((item) => {
-          const active = isNavActive(pathname, item.href)
-          const Icon = item.icon
-          return (
-            <AppLink
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "pressable flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none",
-                active ? "text-foreground" : "text-muted-foreground"
-              )}
-            >
-              <Icon className="size-5" />
-              <span className="max-w-full truncate">{item.shortLabel}</span>
-            </AppLink>
-          )
-        })}
-        {devRoleSwitcherEnabled ? (
-          <AppLink
-            href="/"
-            direction="back"
-            className="pressable flex min-h-14 flex-col items-center justify-center gap-1 px-1 text-[11px] leading-none text-muted-foreground"
-          >
-            <span className="max-w-full truncate">{he.role.switch}</span>
-          </AppLink>
-        ) : null}
       </div>
     </nav>
   )
