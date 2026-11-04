@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useSyncExternalStore } from "react"
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
@@ -8,6 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { MobileFilterPicker } from "@/features/manager/mobile-filters/picker-overlay"
 import { he } from "@/i18n/he"
 import {
   formatMonthTitle,
@@ -33,7 +34,57 @@ export function HebrewDatePicker({
   allowClear?: boolean
   onValueChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
   const [open, setOpen] = useState(false)
+
+  const calendar = (
+    <>
+      <HebrewCalendar
+        value={value}
+        onSelect={(next) => {
+          onValueChange(next)
+          setOpen(false)
+        }}
+      />
+      {allowClear && value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="mt-2 h-8 w-full text-xs"
+          onClick={() => {
+            onValueChange("")
+            setOpen(false)
+          }}
+        >
+          {he.manager.dashboard.clearDate}
+        </Button>
+      ) : null}
+    </>
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <button
+          type="button"
+          className={cn(
+            "relative flex w-full cursor-pointer items-center pe-9 ps-4 text-start",
+            triggerClassName
+          )}
+          onClick={() => setOpen(true)}
+        >
+          <span className={cn("min-w-0 flex-1 truncate text-right", !value && "text-muted-foreground")}>
+            {value ? formatWorkDate(value) : placeholder}
+          </span>
+          <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+        </button>
+        <MobileFilterPicker open={open} title={placeholder} onClose={() => setOpen(false)}>
+          <div className="px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">{calendar}</div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
@@ -49,27 +100,7 @@ export function HebrewDatePicker({
         <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="w-auto rounded-md p-3">
-        <HebrewCalendar
-          value={value}
-          onSelect={(next) => {
-            onValueChange(next)
-            setOpen(false)
-          }}
-        />
-        {allowClear && value ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="mt-2 h-8 w-full text-xs"
-            onClick={() => {
-              onValueChange("")
-              setOpen(false)
-            }}
-          >
-            {he.manager.dashboard.clearDate}
-          </Button>
-        ) : null}
+        {calendar}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -141,5 +172,17 @@ export function HebrewCalendar({
         })}
       </div>
     </div>
+  )
+}
+
+function useDesktop() {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const query = window.matchMedia("(min-width: 1024px)")
+      query.addEventListener("change", onStoreChange)
+      return () => query.removeEventListener("change", onStoreChange)
+    },
+    () => window.matchMedia("(min-width: 1024px)").matches,
+    () => false
   )
 }

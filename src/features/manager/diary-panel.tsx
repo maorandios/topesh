@@ -165,7 +165,13 @@ export function DiaryPanel({
   }
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle swipeDirection="down">
-      <DrawerContent className={cn("overflow-hidden", panelSurfaceClass)} style={panelSurfaceStyle}>
+      <DrawerContent
+        className={cn(
+          "h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0",
+          panelSurfaceClass
+        )}
+        style={panelSurfaceStyle}
+      >
         <DrawerHeader className="sr-only">
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
@@ -264,6 +270,7 @@ function DiaryBody({
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null)
   const [error, setError] = useState(false)
   const [showMissing, setShowMissing] = useState(false)
+  const [actionsOpen, setActionsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const missingFields = diary.status === "pending" ? diarySubmitMissing(diary) : []
@@ -356,44 +363,43 @@ function DiaryBody({
     setShowMissing(false)
   }
 
-  const headerActions = editing ? null : (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
-          aria-label={he.manager.organization.actions}
-        >
-          <Settings className="size-4" aria-hidden />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="min-w-56 p-1.5">
-          <DropdownMenuItem
-            className="rounded-md px-3 py-2.5"
-            label={he.manager.edit}
-            onClick={() => {
-              setDraft(createDraft(diary))
-              setEditing(true)
-              setError(false)
-              setShowMissing(false)
-            }}
-          >
-            <MenuRow icon={Pencil} label={he.manager.edit} />
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-md px-3 py-2.5"
-            label={he.manager.panel.exportPdf}
-            onClick={() => {
-              void exportDiaryPdf(diary, { generatedBy: session.user?.fullName ?? "" })
-                .then(() => notice.success(he.manager.panel.exportPdfDone))
-                .catch(() => notice.error(he.manager.panel.exportPdfFailed))
-            }}
-          >
-            <MenuRow icon={FileText} label={he.manager.panel.exportPdf} />
-          </DropdownMenuItem>
-          {!desktop ? (
-            <DropdownMenuItem
-              className="rounded-md px-3 py-2.5"
-              label={he.manager.panel.duplicateDiary}
-              onClick={() => {
+  const runAction = (action: () => void) => {
+    setActionsOpen(false)
+    action()
+  }
+
+  const actionItems = [
+    {
+      key: "edit",
+      label: he.manager.edit,
+      icon: Pencil,
+      onClick: () =>
+        runAction(() => {
+          setDraft(createDraft(diary))
+          setEditing(true)
+          setError(false)
+          setShowMissing(false)
+        }),
+    },
+    {
+      key: "export",
+      label: he.manager.panel.exportPdf,
+      icon: FileText,
+      onClick: () =>
+        runAction(() => {
+          void exportDiaryPdf(diary, { generatedBy: session.user?.fullName ?? "" })
+            .then(() => notice.success(he.manager.panel.exportPdfDone))
+            .catch(() => notice.error(he.manager.panel.exportPdfFailed))
+        }),
+    },
+    ...(!desktop
+      ? [
+          {
+            key: "duplicate",
+            label: he.manager.panel.duplicateDiary,
+            icon: Files,
+            onClick: () =>
+              runAction(() => {
                 const result = duplicateManagerDiary(diary.id)
                 if (!result.ok) {
                   toast.error(he.manager.panel.duplicateFailed)
@@ -402,45 +408,108 @@ function DiaryBody({
                 toast.success(he.manager.created)
                 onClose()
                 router.push("/manager")
-              }}
-            >
-              <MenuRow icon={Files} label={he.manager.panel.duplicateDiary} />
-            </DropdownMenuItem>
-          ) : null}
-          {diary.status === "pending" ? (
-            <DropdownMenuItem
-              className="rounded-md px-3 py-2.5"
-              label={he.manager.panel.submitDiary}
-              onClick={() => {
+              }),
+          },
+        ]
+      : []),
+    ...(diary.status === "pending"
+      ? [
+          {
+            key: "submit",
+            label: he.manager.panel.submitDiary,
+            icon: CheckCircle2,
+            onClick: () =>
+              runAction(() => {
                 if (!canSubmit) {
                   setShowMissing(true)
                   return
                 }
                 setShowMissing(false)
                 setConfirm("submit")
-              }}
-            >
-              <MenuRow icon={CheckCircle2} label={he.manager.panel.submitDiary} />
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem
-            className="rounded-md px-3 py-2.5"
-            label={he.manager.panel.cancelDiary}
-            disabled={diary.status === "cancelled"}
-            onClick={() => setConfirm("cancel")}
+              }),
+          },
+        ]
+      : []),
+    {
+      key: "cancel",
+      label: he.manager.panel.cancelDiary,
+      icon: XCircle,
+      disabled: diary.status === "cancelled",
+      onClick: () => runAction(() => setConfirm("cancel")),
+    },
+    {
+      key: "delete",
+      label: he.manager.panel.deleteDiary,
+      icon: Trash2,
+      destructive: true,
+      onClick: () => runAction(() => setConfirm("delete")),
+    },
+  ] as const
+
+  const headerActions = editing ? null : (
+    <div className="flex shrink-0 items-center gap-1.5">
+      {!desktop ? (
+        <>
+          <button
+            type="button"
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+            aria-label={he.manager.organization.actions}
+            onClick={() => setActionsOpen(true)}
           >
-            <MenuRow icon={XCircle} label={he.manager.panel.cancelDiary} />
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="rounded-md px-3 py-2.5"
-            label={he.manager.panel.deleteDiary}
-            variant="destructive"
-            onClick={() => setConfirm("delete")}
+            <Settings className="size-4" aria-hidden />
+          </button>
+          <MobileFilterPicker
+            open={actionsOpen}
+            title={he.manager.organization.actions}
+            onClose={() => setActionsOpen(false)}
           >
-            <MenuRow icon={Trash2} label={he.manager.panel.deleteDiary} />
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <div className="px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <ul className="flex flex-col">
+                {actionItems.map((item) => (
+                  <li key={item.key} className="border-b border-border/60 last:border-b-0">
+                    <button
+                      type="button"
+                      disabled={"disabled" in item ? Boolean(item.disabled) : false}
+                      className={cn(
+                        "pressable flex w-full items-center gap-3 px-3 py-3.5 text-start text-sm font-medium",
+                        "destructive" in item && item.destructive && "text-destructive",
+                        "disabled" in item && item.disabled && "opacity-40"
+                      )}
+                      onClick={item.onClick}
+                    >
+                      <item.icon className="size-4 shrink-0" aria-hidden />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </MobileFilterPicker>
+        </>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex size-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-muted-foreground outline-none hover:bg-muted/60 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+            aria-label={he.manager.organization.actions}
+          >
+            <Settings className="size-4" aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" side="bottom" sideOffset={6} className="min-w-56 p-1.5">
+            {actionItems.map((item) => (
+              <DropdownMenuItem
+                key={item.key}
+                className="rounded-md px-3 py-2.5"
+                label={item.label}
+                disabled={"disabled" in item ? Boolean(item.disabled) : false}
+                variant={"destructive" in item && item.destructive ? "destructive" : undefined}
+                onClick={item.onClick}
+              >
+                <MenuRow icon={item.icon} label={item.label} />
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
     </div>
   )
 
@@ -458,7 +527,7 @@ function DiaryBody({
         )}
         aria-hidden={confirm ? true : undefined}
       >
-        <div className="shrink-0 px-4 pb-3 pt-5">
+        <div className="shrink-0 bg-card px-4 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] dark:bg-[#16161a]">
           <PanelHeader
             title={title}
             diary={diary}

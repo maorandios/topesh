@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next"
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "יומן עבודה",
-    short_name: "יומן עבודה",
+    name: "טופ-אש",
+    short_name: "טופ-אש",
     description: "יומן עבודה תפעולי לצוותי התקנה",
     start_url: "/",
     scope: "/",

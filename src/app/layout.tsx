@@ -30,7 +30,8 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "טופ-אש",
-    statusBarStyle: "default",
+    // Draw under the status bar so the top chrome background is continuous on iPhone.
+    statusBarStyle: "black-translucent",
   },
   icons: {
     icon: [
@@ -48,6 +49,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FFFDFB" },

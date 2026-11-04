@@ -37,6 +37,7 @@ import {
 import { HebrewDatePicker } from "@/components/hebrew-date-picker"
 import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
 import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
+import { MobileFilterPicker } from "@/features/manager/mobile-filters/picker-overlay"
 import { createManagerDiary } from "@/data/browser-store"
 import type { MockDb } from "@/data/seed"
 import { he } from "@/i18n/he"
@@ -45,7 +46,7 @@ import { sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
 const editorInputClass =
-  "h-10 w-full min-w-0 rounded-md border border-border bg-muted px-4 text-right text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-[#222228]"
+  "h-10 w-full min-w-0 rounded-md border border-border bg-muted px-4 text-right text-base text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-[#222228]"
 
 type CreateField =
   | "leader"
@@ -100,7 +101,13 @@ export function DiaryCreatePanel({
   }
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle swipeDirection="down">
-      <DrawerContent className={cn("overflow-hidden", panelSurfaceClass)} style={panelSurfaceStyle}>
+      <DrawerContent
+        className={cn(
+          "h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0",
+          panelSurfaceClass
+        )}
+        style={panelSurfaceStyle}
+      >
         <DrawerHeader className="sr-only">
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
@@ -198,7 +205,7 @@ function CreateForm({
 
   return (
     <>
-      <div className="shrink-0 px-4 py-3">
+      <div className="shrink-0 bg-card px-4 pb-3 pt-[max(1.25rem,env(safe-area-inset-top))] dark:bg-[#16161a]">
         <div className="grid grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-2">
           <FileText className="size-4 justify-self-center text-muted-foreground" aria-hidden />
           <p className="text-sm font-semibold text-foreground">{he.manager.panel.createDiary}</p>
@@ -355,7 +362,61 @@ function CreateSelect({
   missing?: boolean
   onValueChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
+  const [open, setOpen] = useState(false)
   const selected = options.find((option) => option.value === value)?.label ?? placeholder
+  const trigger = (
+    <button
+      type="button"
+      className={cn(
+        editorInputClass,
+        "relative flex cursor-pointer items-center pe-9 ps-4 text-start",
+        missing && "border-red-300"
+      )}
+      onClick={() => {
+        if (!desktop) setOpen(true)
+      }}
+    >
+      <span className={cn("min-w-0 flex-1 truncate text-right", !value && "text-muted-foreground")}>
+        {selected}
+      </span>
+      <ChevronDown className="absolute end-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+    </button>
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        {trigger}
+        <MobileFilterPicker open={open} title={placeholder} onClose={() => setOpen(false)}>
+          <div className="px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <ul className="flex flex-col">
+              {options.map((option) => {
+                const active = option.value === value
+                return (
+                  <li key={option.value} className="border-b border-border/60 last:border-b-0">
+                    <button
+                      type="button"
+                      className={cn(
+                        "pressable flex w-full items-center px-3 py-3.5 text-start text-sm font-medium",
+                        active && "text-primary"
+                      )}
+                      onClick={() => {
+                        onValueChange(option.value)
+                        setOpen(false)
+                      }}
+                    >
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        </MobileFilterPicker>
+      </>
+    )
+  }
 
   return (
     <DropdownMenu>

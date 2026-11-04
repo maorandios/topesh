@@ -161,29 +161,57 @@
   }
 }
 
-/* Sticky / floating chrome: blur without changing geometry. */
-.app-chrome {
-  background-color: color-mix(in srgb, var(--background) 88%, transparent);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  backdrop-filter: blur(24px) saturate(1.5);
-}
-
+/* Sticky / floating chrome: solid on mobile so status-bar + bar read as one strip. */
+.app-chrome,
 .app-sticky-bar {
-  background-color: color-mix(in srgb, var(--background) 90%, transparent);
-  -webkit-backdrop-filter: blur(24px) saturate(1.5);
-  backdrop-filter: blur(24px) saturate(1.5);
+  background-color: var(--background);
 }
 
-.dark .app-chrome {
-  background-color: rgb(22 22 24 / 0.52);
-  -webkit-backdrop-filter: blur(22px) saturate(1.5);
-  backdrop-filter: blur(22px) saturate(1.5);
-}
-
+.dark .app-chrome,
 .dark .app-sticky-bar {
-  background-color: rgb(14 14 16 / 0.72);
-  -webkit-backdrop-filter: blur(22px) saturate(1.5);
-  backdrop-filter: blur(22px) saturate(1.5);
+  background-color: #050506;
+}
+
+@media (min-width: 1024px) {
+  .app-chrome {
+    background-color: color-mix(in srgb, var(--background) 88%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+  }
+
+  .app-sticky-bar {
+    background-color: color-mix(in srgb, var(--background) 90%, transparent);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+  }
+
+  .dark .app-chrome {
+    background-color: rgb(22 22 24 / 0.52);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    backdrop-filter: blur(22px) saturate(1.5);
+  }
+
+  .dark .app-sticky-bar {
+    background-color: rgb(14 14 16 / 0.72);
+    -webkit-backdrop-filter: blur(22px) saturate(1.5);
+    backdrop-filter: blur(22px) saturate(1.5);
+  }
+}
+
+/* iOS Safari zooms focused inputs under 16px — keep mobile fields at 16px. */
+@media (max-width: 1023px) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+html,
+body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 /* Keep outside @layer so it wins over UA scrollbar styles in panels/menus. */
