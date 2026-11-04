@@ -1,8 +1,8 @@
 import { managerUser, teamLeaders } from "@/data/catalog"
 
+/** Preview role entry until real auth ships. Set NEXT_PUBLIC_DEV_ROLE_SWITCHER=false to show the holding page. */
 export const devRoleSwitcherEnabled =
-  process.env.NODE_ENV !== "production" ||
-  process.env.NEXT_PUBLIC_DEV_ROLE_SWITCHER === "true"
+  process.env.NEXT_PUBLIC_DEV_ROLE_SWITCHER !== "false"
 
 export const devManager = managerUser
 export const devTeamLeaders = teamLeaders
