@@ -13,14 +13,9 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
+  // Serwist injects a webpack config; empty turbopack keeps `next dev` happy.
+  // CSS is handled by postcss.config.mjs (@tailwindcss/postcss) for both bundlers.
+  turbopack: {},
 }
 
 export default withSerwist(nextConfig)
