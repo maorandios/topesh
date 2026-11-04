@@ -7,7 +7,7 @@ const withSerwist = withSerwistInit({
   disable: process.env.NODE_ENV === "development",
   reloadOnOnline: false,
   cacheOnNavigation: false,
-  additionalPrecacheEntries: [{ url: "/offline", revision: "phase-1" }],
+  additionalPrecacheEntries: [{ url: "/offline", revision: "ios15-compat-1" }],
 })
 
 const nextConfig: NextConfig = {
