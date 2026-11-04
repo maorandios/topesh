@@ -1,10 +1,12 @@
 "use client"
 
-import { useEffect, useSyncExternalStore, type ReactNode } from "react"
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import { ChevronDown, X } from "lucide-react"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
+
+const EXIT_MS = 220
 
 function useIsClient() {
   return useSyncExternalStore(
@@ -30,9 +32,25 @@ export function MobileFilterPicker({
   showClose?: boolean
 }) {
   const mounted = useIsClient()
+  const [present, setPresent] = useState(open)
+  const [visible, setVisible] = useState(false)
 
   useEffect(() => {
-    if (!open) return
+    if (open) {
+      setPresent(true)
+      // Wait two frames so the enter transform starts from off-screen.
+      const frame = window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => setVisible(true))
+      })
+      return () => window.cancelAnimationFrame(frame)
+    }
+    setVisible(false)
+    const timer = window.setTimeout(() => setPresent(false), EXIT_MS)
+    return () => window.clearTimeout(timer)
+  }, [open])
+
+  useEffect(() => {
+    if (!present) return
     const previous = document.body.style.overflow
     document.body.style.overflow = "hidden"
     const onKey = (event: KeyboardEvent) => {
@@ -43,9 +61,9 @@ export function MobileFilterPicker({
       document.body.style.overflow = previous
       window.removeEventListener("keydown", onKey)
     }
-  }, [open, onClose])
+  }, [present, onClose])
 
-  if (!mounted || !open) return null
+  if (!mounted || !present) return null
 
   return createPortal(
     <div
@@ -56,11 +74,22 @@ export function MobileFilterPicker({
     >
       <button
         type="button"
-        className="absolute inset-0 bg-[#2B2B2B]/40 backdrop-blur-[16px] dark:bg-black/40"
+        className={cn(
+          "absolute inset-0 bg-[#2B2B2B]/40 backdrop-blur-[16px] transition-opacity duration-200 dark:bg-black/40",
+          visible ? "opacity-100" : "opacity-0"
+        )}
         aria-label={he.close}
         onClick={onClose}
       />
-      <div className="relative z-10 flex max-h-[85vh] flex-col overflow-hidden rounded-t-2xl border-t border-border bg-card text-card-foreground shadow-lg dark:bg-[#16161a]">
+      <div
+        className={cn(
+          "relative z-10 flex max-h-[85vh] flex-col overflow-hidden rounded-t-2xl border-t border-border bg-card text-card-foreground shadow-lg duration-200 ease-out dark:bg-[#16161a]",
+          "motion-safe:transition-[transform,opacity]",
+          visible
+            ? "translate-y-0 opacity-100"
+            : "translate-y-full opacity-0"
+        )}
+      >
         <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
           <h2 className="min-w-0 flex-1 text-start font-heading text-base font-medium">{title}</h2>
           {showClose ? (

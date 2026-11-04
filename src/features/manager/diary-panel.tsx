@@ -68,6 +68,8 @@ import { diarySubmitMissing, getManagerDiary, type DiarySubmitField } from "@/da
 import { parseQuantityInput } from "@/data/quantity"
 import type { MockDb } from "@/data/seed"
 import type { DiaryStatus } from "@/domain/types"
+import { useDevSession } from "@/features/dev-role/dev-session"
+import { MobileFilterPicker } from "@/features/manager/mobile-filters/picker-overlay"
 import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { he } from "@/i18n/he"
 import { formatDateTime, formatQuantity, formatWorkDate } from "@/lib/format"
@@ -256,11 +258,13 @@ function DiaryBody({
   const notice = usePanelNotice()
   const router = useRouter()
   const desktop = useDesktop()
+  const session = useDevSession()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<PanelDraft | null>(null)
   const [confirm, setConfirm] = useState<ConfirmKind | null>(null)
   const [error, setError] = useState(false)
   const [showMissing, setShowMissing] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const missingFields = diary.status === "pending" ? diarySubmitMissing(diary) : []
   const canSubmit = diary.status === "pending" && missingFields.length === 0
@@ -268,8 +272,17 @@ function DiaryBody({
 
   useEffect(() => {
     if (!showMissing || highlightedMissing.length === 0) return
-    const target = document.querySelector<HTMLElement>("[data-missing='true']")
-    target?.scrollIntoView({ block: "center", behavior: "smooth" })
+    const root = scrollRef.current
+    if (!root) return
+    const target = root.querySelector<HTMLElement>("[data-missing='true']")
+    if (!target) return
+    // Scroll only inside the panel — never scrollIntoView on the page/drawer
+    // (that was clipping the swipe handle and header).
+    const rootRect = root.getBoundingClientRect()
+    const targetRect = target.getBoundingClientRect()
+    const nextTop =
+      root.scrollTop + (targetRect.top - rootRect.top) - root.clientHeight / 2 + targetRect.height / 2
+    root.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" })
   }, [showMissing, highlightedMissing])
 
   const runConfirm = () => {
@@ -369,7 +382,7 @@ function DiaryBody({
             className="rounded-md px-3 py-2.5"
             label={he.manager.panel.exportPdf}
             onClick={() => {
-              void exportDiaryPdf(diary)
+              void exportDiaryPdf(diary, { generatedBy: session.user?.fullName ?? "" })
                 .then(() => notice.success(he.manager.panel.exportPdfDone))
                 .catch(() => notice.error(he.manager.panel.exportPdfFailed))
             }}
@@ -431,8 +444,13 @@ function DiaryBody({
     </div>
   )
 
+  const dismissMissing = () => {
+    setShowMissing(false)
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
   return (
-    <>
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col transition-[filter,opacity] duration-200",
@@ -440,10 +458,15 @@ function DiaryBody({
         )}
         aria-hidden={confirm ? true : undefined}
       >
-        <div className="shrink-0 px-4 py-3">
-          <PanelHeader title={title} diary={diary} menu={headerActions} />
+        <div className="shrink-0 px-4 pb-3 pt-5">
+          <PanelHeader
+            title={title}
+            diary={diary}
+            menu={showMissing && !editing ? null : headerActions}
+          />
         </div>
         <div
+          ref={scrollRef}
           className={cn(
             "min-h-0 flex-1 overflow-y-auto px-4 py-3",
             showMissing && !editing
@@ -499,7 +522,7 @@ function DiaryBody({
             size="default"
             variant="outline"
             className="h-10 w-full"
-            onClick={() => setShowMissing(false)}
+            onClick={dismissMissing}
           >
             {he.manager.panel.abortAction}
           </Button>
@@ -551,7 +574,7 @@ function DiaryBody({
           </div>
         </>
       ) : null}
-    </>
+    </div>
   )
 }
 
@@ -815,6 +838,8 @@ function FactSelect({
   options: Array<{ value: string; label: string }>
   onChange: (value: string) => void
 }) {
+  const desktop = useDesktop()
+  const [pickerOpen, setPickerOpen] = useState(false)
   const body = (
     <div className={fieldGridClass}>
       <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
@@ -834,6 +859,23 @@ function FactSelect({
         style={missing ? { boxShadow: "0 0 0 1px rgba(239, 68, 68, 0.55)" } : undefined}
       >
         {body}
+      </li>
+    )
+  }
+  if (!desktop) {
+    return (
+      <li data-missing={missing ? "true" : undefined} className="min-w-0">
+        <button type="button" className={editTriggerClass} onClick={() => setPickerOpen(true)}>
+          {body}
+        </button>
+        <MobileChoiceList
+          open={pickerOpen}
+          title={label}
+          options={options}
+          value={value}
+          onClose={() => setPickerOpen(false)}
+          onSelect={onChange}
+        />
       </li>
     )
   }
@@ -1053,6 +1095,10 @@ function InstallationsTable({
   onDoneQty: () => void
   onChange: (items: DraftItem[]) => void
 }) {
+  const desktop = useDesktop()
+  const [addOpen, setAddOpen] = useState(false)
+  const [domainPickerId, setDomainPickerId] = useState<string | null>(null)
+
   const addDomainRow = (domain: DomainOption) => {
     onChange([
       ...items,
@@ -1068,6 +1114,49 @@ function InstallationsTable({
     ])
   }
 
+  const domainOptions = domains.map((domain) => ({ value: domain.id, label: domain.name }))
+
+  const addAction = !editing ? null : desktop ? (
+    <DropdownMenu>
+      <DropdownMenuTrigger className={sectionAddClass}>
+        <Plus className="size-3.5" aria-hidden />
+        <span className="sr-only">{he.leader.form.addItem}</span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={6} className="w-auto max-h-52 min-w-44 rounded-md p-1.5">
+        {domains.map((domain) => (
+          <DropdownMenuItem
+            key={domain.id}
+            className="rounded-md px-3 py-2"
+            onClick={() => addDomainRow(domain)}
+          >
+            {domain.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : (
+    <>
+      <button
+        type="button"
+        className={sectionAddClass}
+        aria-label={he.leader.form.addItem}
+        onClick={() => setAddOpen(true)}
+      >
+        <Plus className="size-3.5" aria-hidden />
+      </button>
+      <MobileChoiceList
+        open={addOpen}
+        title={he.leader.form.addItem}
+        options={domainOptions}
+        onClose={() => setAddOpen(false)}
+        onSelect={(domainId) => {
+          const domain = domains.find((entry) => entry.id === domainId)
+          if (domain) addDomainRow(domain)
+        }}
+      />
+    </>
+  )
+
   return (
     <SectionShell
       icon={Cable}
@@ -1082,27 +1171,7 @@ function InstallationsTable({
             }
           : undefined
       }
-      action={
-        editing ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger className={sectionAddClass}>
-              <Plus className="size-3.5" aria-hidden />
-              <span className="sr-only">{he.leader.form.addItem}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="w-auto max-h-52 min-w-44 rounded-md p-1.5">
-              {domains.map((domain) => (
-                <DropdownMenuItem
-                  key={domain.id}
-                  className="rounded-md px-3 py-2"
-                  onClick={() => addDomainRow(domain)}
-                >
-                  {domain.name}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null
-      }
+      action={addAction}
     >
       {items.length === 0 ? (
         <p
@@ -1136,37 +1205,74 @@ function InstallationsTable({
                   <tr key={item.id} className="group/row border-b border-border/40 last:border-b-0">
                     <td className="truncate px-2.5 py-1.5">
                       {editing ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger className={editTriggerClass}>
-                            <span className="block truncate">{item.domainName}</span>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-44 rounded-md p-1.5">
-                            {domains.map((domain) => (
-                              <DropdownMenuItem
-                                key={domain.id}
-                                className="rounded-md px-3 py-2"
-                                onClick={() =>
-                                  onChange(
-                                    items.map((entry) =>
-                                      entry.id === item.id
-                                        ? {
-                                            ...entry,
-                                            domainId: domain.id,
-                                            domainName: domain.name,
-                                            componentId: "",
-                                            componentName: "",
-                                            unit: "",
-                                          }
-                                        : entry
+                        desktop ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger className={editTriggerClass}>
+                              <span className="block truncate">{item.domainName}</span>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-44 rounded-md p-1.5">
+                              {domains.map((domain) => (
+                                <DropdownMenuItem
+                                  key={domain.id}
+                                  className="rounded-md px-3 py-2"
+                                  onClick={() =>
+                                    onChange(
+                                      items.map((entry) =>
+                                        entry.id === item.id
+                                          ? {
+                                              ...entry,
+                                              domainId: domain.id,
+                                              domainName: domain.name,
+                                              componentId: "",
+                                              componentName: "",
+                                              unit: "",
+                                            }
+                                          : entry
+                                      )
                                     )
+                                  }
+                                >
+                                  {domain.name}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className={editTriggerClass}
+                              onClick={() => setDomainPickerId(item.id)}
+                            >
+                              <span className="block truncate text-start">{item.domainName}</span>
+                            </button>
+                            <MobileChoiceList
+                              open={domainPickerId === item.id}
+                              title={he.leader.form.system}
+                              options={domainOptions}
+                              value={item.domainId}
+                              onClose={() => setDomainPickerId(null)}
+                              onSelect={(domainId) => {
+                                const domain = domains.find((entry) => entry.id === domainId)
+                                if (!domain) return
+                                onChange(
+                                  items.map((entry) =>
+                                    entry.id === item.id
+                                      ? {
+                                          ...entry,
+                                          domainId: domain.id,
+                                          domainName: domain.name,
+                                          componentId: "",
+                                          componentName: "",
+                                          unit: "",
+                                        }
+                                      : entry
                                   )
-                                }
-                              >
-                                {domain.name}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                )
+                              }}
+                            />
+                          </>
+                        )
                       ) : (
                         item.domainName
                       )}
@@ -1253,15 +1359,45 @@ function ComponentPicker({
   components: ComponentOption[]
   onPick: (component: ComponentOption) => void
 }) {
+  const desktop = useDesktop()
+  const [open, setOpen] = useState(false)
+  const options = [...components]
+    .sort((a, b) => compareHebrew(a.name, b.name))
+    .map((component) => ({ value: component.id, label: component.name }))
+
+  const trigger = item.componentName ? (
+    <span className="block truncate text-start">{item.componentName}</span>
+  ) : (
+    <span className="block truncate text-start text-muted-foreground">
+      {he.leader.form.chooseComponent}
+    </span>
+  )
+
+  if (!desktop) {
+    return (
+      <>
+        <button type="button" className={editTriggerClass} onClick={() => setOpen(true)}>
+          {trigger}
+        </button>
+        <MobileChoiceList
+          open={open}
+          title={he.leader.form.component}
+          options={options}
+          value={item.componentId}
+          emptyText={he.leader.form.chooseDomain}
+          onClose={() => setOpen(false)}
+          onSelect={(value) => {
+            const component = components.find((entry) => entry.id === value)
+            if (component) onPick(component)
+          }}
+        />
+      </>
+    )
+  }
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className={editTriggerClass}>
-        {item.componentName ? (
-          <span className="block truncate">{item.componentName}</span>
-        ) : (
-          <span className="block truncate text-muted-foreground">{he.leader.form.chooseComponent}</span>
-        )}
-      </DropdownMenuTrigger>
+      <DropdownMenuTrigger className={editTriggerClass}>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="max-h-52 min-w-52 rounded-md p-1.5">
         {components.length === 0 ? (
           <p className="px-3 py-2 text-xs text-muted-foreground">{he.leader.form.chooseDomain}</p>
@@ -1273,11 +1409,13 @@ function ComponentPicker({
               if (component) onPick(component)
             }}
           >
-            {[...components]
-              .sort((a, b) => compareHebrew(a.name, b.name))
-              .map((component) => (
-              <DropdownMenuRadioItem key={component.id} value={component.id} className="rounded-md px-3 py-2">
-                <span className="truncate">{component.name}</span>
+            {options.map((component) => (
+              <DropdownMenuRadioItem
+                key={component.value}
+                value={component.value}
+                className="rounded-md px-3 py-2"
+              >
+                <span className="truncate">{component.label}</span>
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
@@ -1330,8 +1468,45 @@ function SafetySection({
   checkedIds: string[]
   onChange: (ids: string[]) => void
 }) {
+  const desktop = useDesktop()
+
   const content =
-    labels.length === 0 ? (
+    editing && !desktop ? (
+      <ul className="flex flex-col">
+        {options.map((option) => {
+          const checked = checkedIds.includes(option.id)
+          return (
+            <li key={option.id}>
+              <button
+                type="button"
+                aria-pressed={checked}
+                className="flex min-h-10 w-full items-center gap-3 py-1.5 text-start text-sm"
+                onClick={() =>
+                  onChange(
+                    checked
+                      ? checkedIds.filter((id) => id !== option.id)
+                      : [...checkedIds, option.id]
+                  )
+                }
+              >
+                <span
+                  className={cn(
+                    "inline-flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    checked ? "border-primary" : "border-muted-foreground/50"
+                  )}
+                  aria-hidden
+                >
+                  {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
+                </span>
+                <span className={cn("min-w-0 flex-1 leading-5", checked && "font-medium")}>
+                  {option.label}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    ) : labels.length === 0 ? (
       <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyChecks}</p>
     ) : (
       <p className="text-sm leading-5">
@@ -1344,38 +1519,35 @@ function SafetySection({
       </p>
     )
 
+  const action =
+    !editing || !desktop ? null : (
+      <DropdownMenu>
+        <DropdownMenuTrigger className={sectionAddClass}>
+          <Plus className="size-3.5" aria-hidden />
+          <span className="sr-only">{he.leader.form.checksTitle}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" sideOffset={6} className="min-w-52 rounded-md p-1.5">
+          {options.map((option) => {
+            const checked = checkedIds.includes(option.id)
+            return (
+              <DropdownMenuCheckboxItem
+                key={option.id}
+                checked={checked}
+                className="rounded-md px-3 py-2"
+                onCheckedChange={(next) =>
+                  onChange(next ? [...checkedIds, option.id] : checkedIds.filter((id) => id !== option.id))
+                }
+              >
+                {option.label}
+              </DropdownMenuCheckboxItem>
+            )
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    )
+
   return (
-    <SectionShell
-      icon={Info}
-      title={he.leader.form.checksTitle}
-      action={
-        editing ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger className={sectionAddClass}>
-              <Plus className="size-3.5" aria-hidden />
-              <span className="sr-only">{he.leader.form.checksTitle}</span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" sideOffset={6} className="min-w-52 rounded-md p-1.5">
-              {options.map((option) => {
-                const checked = checkedIds.includes(option.id)
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={option.id}
-                    checked={checked}
-                    className="rounded-md px-3 py-2"
-                    onCheckedChange={(next) =>
-                      onChange(next ? [...checkedIds, option.id] : checkedIds.filter((id) => id !== option.id))
-                    }
-                  >
-                    {option.label}
-                  </DropdownMenuCheckboxItem>
-                )
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null
-      }
-    >
+    <SectionShell icon={Info} title={he.leader.form.checksTitle} action={action}>
       {content}
     </SectionShell>
   )
@@ -1434,7 +1606,7 @@ function SectionShell({
       className={cn(fieldGridClass, "gap-y-1.5", className)}
       style={style}
     >
-      <FieldLead icon={Icon} missing={missing} iconClassName="size-3.5" />
+      <FieldLead icon={Icon} iconClassName="size-3.5" />
       <div className="flex min-w-0 items-center justify-between gap-2">
         <h3 className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground">{title}</h3>
         {action}
@@ -1446,6 +1618,57 @@ function SectionShell({
 
 function SectionDivider() {
   return <div className="mx-8 h-px bg-border/40" aria-hidden />
+}
+
+function MobileChoiceList({
+  open,
+  title,
+  options,
+  value,
+  emptyText,
+  onClose,
+  onSelect,
+}: {
+  open: boolean
+  title: string
+  options: Array<{ value: string; label: string }>
+  value?: string
+  emptyText?: string
+  onClose: () => void
+  onSelect: (value: string) => void
+}) {
+  return (
+    <MobileFilterPicker open={open} title={title} onClose={onClose}>
+      <div className="px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {options.length === 0 ? (
+          <p className="px-3 py-4 text-sm text-muted-foreground">{emptyText ?? he.manager.empty}</p>
+        ) : (
+          <ul className="flex flex-col">
+            {options.map((option) => {
+              const active = option.value === value
+              return (
+                <li key={option.value} className="border-b border-border/60 last:border-b-0">
+                  <button
+                    type="button"
+                    className={cn(
+                      "pressable flex w-full items-center px-3 py-3.5 text-start text-sm font-medium",
+                      active && "text-primary"
+                    )}
+                    onClick={() => {
+                      onSelect(option.value)
+                      onClose()
+                    }}
+                  >
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </MobileFilterPicker>
+  )
 }
 
 const editTriggerClass = cn(

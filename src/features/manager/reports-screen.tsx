@@ -12,6 +12,7 @@ import {
   FileText,
   Filter,
   MapPin,
+  MessageCircle,
   Search,
   UserRound,
   Users,
@@ -74,9 +75,19 @@ import {
   FilterTriggerControl,
   MobileFilterPicker,
 } from "@/features/manager/mobile-filters/picker-overlay"
-import { exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
-import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
-import { exportReportPdf } from "@/features/manager/reports/export-pdf"
+import { useDevSession } from "@/features/dev-role/dev-session"
+import { diaryFileBasename } from "@/features/manager/reports/diary-filename"
+import { reportStamp } from "@/features/manager/reports/download"
+import { buildDiariesZipBlob, diariesZipBasename, exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
+import { buildDiaryPdfBytes, exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
+import { buildReportPdfBytes, exportReportPdf } from "@/features/manager/reports/export-pdf"
+import {
+  canShareFilesWithWhatsApp,
+  downloadShareFile,
+  openWhatsAppChat,
+  shareFileNative,
+  WHATSAPP_MESSAGE,
+} from "@/features/manager/reports/share-whatsapp"
 import { he } from "@/i18n/he"
 import { BidiText } from "@/lib/bidi"
 import {
@@ -95,6 +106,7 @@ const filterControlClass =
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 
 type ExportMode = "list" | "contents"
+type ExportChannel = "pdf" | "whatsapp"
 
 export function ReportsScreen() {
   const query = useManagerDb()
@@ -105,6 +117,7 @@ export function ReportsScreen() {
 
 function ReportsReady({ db }: { db: MockDb }) {
   const desktop = useDesktop()
+  const session = useDevSession()
   const [filters, setFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [draftFilters, setDraftFilters] = useState<WorkDiarySearchFilters>(() => emptyWorkDiarySearchFilters())
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -112,6 +125,7 @@ function ReportsReady({ db }: { db: MockDb }) {
   const [exporting, setExporting] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportMode, setExportMode] = useState<ExportMode>("list")
+  const [exportChannel, setExportChannel] = useState<ExportChannel>("pdf")
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [selectMode, setSelectMode] = useState(false)
   const [loaded, setLoaded] = useState({ key: "", extra: 0 })
@@ -211,11 +225,12 @@ function ReportsReady({ db }: { db: MockDb }) {
     setSelectedIds(new Set())
   }
 
-  const openExportModal = () => {
+  const openExportModal = (channel: ExportChannel) => {
     if (selectedDiaries.length === 0) {
       toast.info(he.manager.reports.exportNeedSelection)
       return
     }
+    setExportChannel(channel)
     setExportMode("list")
     setExportOpen(true)
   }
@@ -226,12 +241,65 @@ function ReportsReady({ db }: { db: MockDb }) {
       return
     }
     const mode = exportMode
+    const channel = exportChannel
+    // WhatsApp must open in the same tick as the click — after await, browsers block popups.
+    const whatsappNativeShare = channel === "whatsapp" && canShareFilesWithWhatsApp()
+    if (channel === "whatsapp" && !whatsappNativeShare) {
+      openWhatsAppChat(WHATSAPP_MESSAGE)
+    }
     setExportOpen(false)
     setExporting(true)
     try {
-      if (mode === "list") {
+      const pdfOptions = { generatedBy: session.user?.fullName ?? "" }
+      if (channel === "whatsapp") {
+        let file: File
+        if (mode === "list") {
+          const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
+          const bytes = await buildReportPdfBytes(result, labels, pdfOptions)
+          file = new File(
+            [new Uint8Array(bytes)],
+            `topesh-report-${result.type}-${reportStamp()}.pdf`,
+            { type: "application/pdf" }
+          )
+        } else {
+          const details = selectedDiaries
+            .map((summary) => getManagerDiary(db, summary.id))
+            .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail))
+          if (details.length === 0) {
+            toast.info(he.manager.reports.exportNeedSelection)
+            return
+          }
+          if (details.length === 1) {
+            const bytes = await buildDiaryPdfBytes(details[0]!, pdfOptions)
+            file = new File(
+              [new Uint8Array(bytes)],
+              `${diaryFileBasename(details[0]!)}.pdf`,
+              { type: "application/pdf" }
+            )
+          } else {
+            const blob = await buildDiariesZipBlob(details, "pdf", pdfOptions)
+            file = new File([blob], `${diariesZipBasename(details)}.zip`, {
+              type: "application/zip",
+            })
+          }
+        }
+        if (whatsappNativeShare) {
+          try {
+            await shareFileNative(file, WHATSAPP_MESSAGE)
+            toast.success(he.manager.reports.whatsAppDone)
+          } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") return
+            downloadShareFile(file)
+            openWhatsAppChat(WHATSAPP_MESSAGE)
+            toast.success(he.manager.reports.whatsAppDoneAttach)
+          }
+        } else {
+          downloadShareFile(file)
+          toast.success(he.manager.reports.whatsAppDoneAttach)
+        }
+      } else if (mode === "list") {
         const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
-        await exportReportPdf(result, labels)
+        await exportReportPdf(result, labels, pdfOptions)
         toast.success(he.manager.reports.exportPdfDone)
       } else {
         const details = selectedDiaries
@@ -241,12 +309,16 @@ function ReportsReady({ db }: { db: MockDb }) {
           toast.info(he.manager.reports.exportNeedSelection)
           return
         }
-        if (details.length === 1) await exportDiaryPdf(details[0]!)
-        else await exportDiariesZip(details, "pdf")
+        if (details.length === 1) await exportDiaryPdf(details[0]!, pdfOptions)
+        else await exportDiariesZip(details, "pdf", pdfOptions)
         toast.success(he.manager.reports.exportDiariesDone)
       }
     } catch {
-      toast.error(he.manager.reports.exportPdfFailed)
+      toast.error(
+        channel === "whatsapp"
+          ? he.manager.reports.whatsAppFailed
+          : he.manager.reports.exportPdfFailed
+      )
     } finally {
       setExporting(false)
     }
@@ -258,7 +330,8 @@ function ReportsReady({ db }: { db: MockDb }) {
       selectedCount={selectedDiaries.length}
       canExport={canExport}
       exporting={exporting}
-      onExportPdf={openExportModal}
+      onExportPdf={() => openExportModal("pdf")}
+      onSendWhatsApp={() => openExportModal("whatsapp")}
     />
   )
 
@@ -387,49 +460,43 @@ function ReportsReady({ db }: { db: MockDb }) {
               <p className="mt-1 text-sm text-muted-foreground">{he.manager.reports.emptyHint}</p>
             </div>
           ) : (
-            <ul className="overflow-hidden rounded-md border border-border bg-card lg:hidden">
-              <li
-                className={cn(
-                  "grid border-border bg-muted/70 transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none",
-                  selectMode ? "grid-rows-[1fr] border-b" : "grid-rows-[0fr]"
-                )}
-                aria-hidden={!selectMode}
-              >
+            <div className="flex flex-col gap-3 lg:hidden">
+              {selectMode ? (
                 <div
                   className={cn(
-                    "min-h-0 overflow-hidden",
-                    !selectMode && "pointer-events-none"
+                    "app-sticky-bar sticky z-20 -mx-4 border-b border-border px-4 py-2",
+                    "top-[calc(3.5rem+env(safe-area-inset-top))]"
                   )}
                 >
-                  <div
-                    className={cn(
-                      "px-2 py-2 transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none",
-                      selectMode ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
-                    )}
-                  >
+                  <div className="rounded-md border border-border bg-card px-2 py-2">
                     <MobileSelectToolbar
                       selectedCount={selectedDiaries.length}
                       canExport={canExport}
                       exporting={exporting}
                       onCancel={exitSelectMode}
-                      onExportPdf={openExportModal}
+                      onExportPdf={() => openExportModal("pdf")}
+                      onSendWhatsApp={() => openExportModal("whatsapp")}
                     />
                   </div>
                 </div>
-              </li>
-              {visibleDiaries.map((diary) => (
-                <li key={diary.id} className="border-b border-border last:border-b-0">
-                  <DiaryResultRow
-                    diary={diary}
-                    selectMode={selectMode}
-                    selected={selectedIds.has(diary.id)}
-                    onToggle={(checked) => toggleOne(diary.id, checked)}
-                    onEnterSelectMode={() => enterSelectMode(diary.id)}
-                    onOpen={setOpenDiaryId}
-                  />
-                </li>
-              ))}
-            </ul>
+              ) : null}
+              <div className="rounded-md border border-border bg-card">
+                <ul>
+                  {visibleDiaries.map((diary) => (
+                    <li key={diary.id} className="border-b border-border last:border-b-0">
+                      <DiaryResultRow
+                        diary={diary}
+                        selectMode={selectMode}
+                        selected={selectedIds.has(diary.id)}
+                        onToggle={(checked) => toggleOne(diary.id, checked)}
+                        onEnterSelectMode={() => enterSelectMode(diary.id)}
+                        onOpen={setOpenDiaryId}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           )}
 
           {loadMore}
@@ -442,13 +509,23 @@ function ReportsReady({ db }: { db: MockDb }) {
         <Dialog open={exportOpen} onOpenChange={setExportOpen}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>{he.manager.reports.exportModalTitlePdf}</DialogTitle>
-              <DialogDescription>{he.manager.reports.exportModalBody}</DialogDescription>
+              <DialogTitle>
+                {exportChannel === "whatsapp"
+                  ? he.manager.reports.exportModalTitleWhatsApp
+                  : he.manager.reports.exportModalTitlePdf}
+              </DialogTitle>
+              <DialogDescription>
+                {exportChannel === "whatsapp"
+                  ? he.manager.reports.exportModalBodyWhatsApp
+                  : he.manager.reports.exportModalBody}
+              </DialogDescription>
             </DialogHeader>
             <ExportModePicker exportMode={exportMode} onExportModeChange={setExportMode} />
             <DialogFooter className="sm:justify-start">
               <Button type="button" onClick={() => void runExport()}>
-                {he.manager.reports.exportConfirm}
+                {exportChannel === "whatsapp"
+                  ? he.manager.reports.whatsAppConfirm
+                  : he.manager.reports.exportConfirm}
               </Button>
               <Button type="button" variant="outline" onClick={() => setExportOpen(false)}>
                 {he.manager.reports.exportCancel}
@@ -460,8 +537,16 @@ function ReportsReady({ db }: { db: MockDb }) {
         <Drawer open={exportOpen} onOpenChange={setExportOpen} showSwipeHandle swipeDirection="down">
           <DrawerContent className="overflow-hidden" dir="rtl">
             <DrawerHeader className="text-start md:text-start">
-              <DrawerTitle className="text-start">{he.manager.reports.exportModalTitlePdf}</DrawerTitle>
-              <DrawerDescription className="text-start">{he.manager.reports.exportModalBody}</DrawerDescription>
+              <DrawerTitle className="text-start">
+                {exportChannel === "whatsapp"
+                  ? he.manager.reports.exportModalTitleWhatsApp
+                  : he.manager.reports.exportModalTitlePdf}
+              </DrawerTitle>
+              <DrawerDescription className="text-start">
+                {exportChannel === "whatsapp"
+                  ? he.manager.reports.exportModalBodyWhatsApp
+                  : he.manager.reports.exportModalBody}
+              </DrawerDescription>
             </DrawerHeader>
             <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
               <ExportModePicker exportMode={exportMode} onExportModeChange={setExportMode} />
@@ -479,7 +564,9 @@ function ReportsReady({ db }: { db: MockDb }) {
                   className="h-[calc(2.25rem*1.1*1.1)] w-[70%]"
                   onClick={() => void runExport()}
                 >
-                  {he.manager.reports.exportConfirm}
+                  {exportChannel === "whatsapp"
+                    ? he.manager.reports.whatsAppConfirm
+                    : he.manager.reports.exportConfirm}
                 </Button>
               </div>
             </div>
@@ -558,12 +645,14 @@ function ResultsToolbar({
   canExport,
   exporting,
   onExportPdf,
+  onSendWhatsApp,
 }: {
   matchingCount: number
   selectedCount: number
   canExport: boolean
   exporting: boolean
   onExportPdf: () => void
+  onSendWhatsApp: () => void
 }) {
   return (
     <div
@@ -576,6 +665,12 @@ function ResultsToolbar({
         icon={FileText}
         disabled={!canExport}
         onClick={onExportPdf}
+      />
+      <ToolbarAction
+        label={exporting ? "..." : he.manager.reports.sendWhatsApp}
+        icon={MessageCircle}
+        disabled={!canExport}
+        onClick={onSendWhatsApp}
       />
       <ToolbarStat
         label={he.manager.reports.matchingCount}
@@ -595,12 +690,14 @@ function MobileSelectToolbar({
   exporting,
   onCancel,
   onExportPdf,
+  onSendWhatsApp,
 }: {
   selectedCount: number
   canExport: boolean
   exporting: boolean
   onCancel: () => void
   onExportPdf: () => void
+  onSendWhatsApp: () => void
 }) {
   return (
     <div
@@ -637,6 +734,20 @@ function MobileSelectToolbar({
       >
         <FileText className="size-3.5 shrink-0" aria-hidden />
         {exporting ? "..." : he.manager.reports.exportPdfShort}
+      </button>
+      <button
+        type="button"
+        disabled={!canExport}
+        className={cn(
+          "pressable inline-flex min-h-11 min-w-0 flex-[1.2] items-center justify-center gap-1.5 rounded-md px-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+          canExport
+            ? "text-primary hover:bg-background/60"
+            : "cursor-not-allowed text-muted-foreground/50"
+        )}
+        onClick={onSendWhatsApp}
+      >
+        <MessageCircle className="size-3.5 shrink-0" aria-hidden />
+        {exporting ? "..." : he.manager.reports.sendWhatsAppShort}
       </button>
     </div>
   )
@@ -849,17 +960,17 @@ function DiaryResultsTable({
           <col className="w-[7rem]" />
           <col className="w-[7.5rem]" />
         </colgroup>
-        <thead className="sticky top-0 z-30 bg-muted">
-          <tr className="bg-muted text-foreground">
-            <th colSpan={headers.length} className="bg-muted px-3 pt-3 pb-1.5 font-normal">
+        <thead className="app-sticky-bar sticky top-0 z-30">
+          <tr className="text-foreground">
+            <th colSpan={headers.length} className="px-3 pt-3 pb-1.5 font-normal">
               <div className="flex justify-end">{toolbar}</div>
             </th>
           </tr>
-          <tr className="border-b border-border bg-muted text-foreground">
+          <tr className="border-b border-border text-foreground">
             {headers.map((header) => (
               <th
                 key={header.key}
-                className="bg-muted px-2 pt-1.5 pb-2.5 text-center font-medium whitespace-nowrap first:ps-3 last:pe-3"
+                className="px-2 pt-1.5 pb-2.5 text-center font-medium whitespace-nowrap first:ps-3 last:pe-3"
               >
                 {header.key === "select" ? (
                   <RowCheckbox

@@ -309,7 +309,8 @@ export function DataManagementScreen() {
                   data-tab-id={item.id}
                   aria-selected={selected}
                   className={cn(
-                    "pressable flex aspect-square w-[6.75rem] shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors lg:aspect-auto lg:w-auto lg:min-h-[7.5rem] lg:snap-align-none",
+                    "pressable flex aspect-square w-[6.75rem] shrink-0 snap-start flex-col items-center justify-center gap-2.5 rounded-xl border px-3 py-3 text-center transition-colors",
+                    "lg:aspect-auto lg:h-auto lg:min-h-0 lg:w-auto lg:flex-row lg:justify-start lg:gap-2 lg:rounded-md lg:px-3 lg:py-2.5 lg:text-start lg:snap-align-none",
                     selected
                       ? "border-primary bg-primary/10 text-foreground shadow-[0_0_0_1px_rgb(255_51_0_/0.25)]"
                       : "border-border bg-card text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -321,13 +322,13 @@ export function DataManagementScreen() {
                 >
                   <span
                     className={cn(
-                      "inline-flex size-9 items-center justify-center rounded-full",
+                      "inline-flex size-9 items-center justify-center rounded-full lg:size-7",
                       selected ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                     )}
                   >
-                    <Icon className="size-4" aria-hidden />
+                    <Icon className="size-4 lg:size-3.5" aria-hidden />
                   </span>
-                  <span className="text-sm font-medium leading-tight">{item.label}</span>
+                  <span className="text-sm font-medium leading-tight lg:text-xs">{item.label}</span>
                 </button>
               )
             })}
@@ -335,7 +336,7 @@ export function DataManagementScreen() {
         </div>
 
         <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-start">
-          <div className="order-2 flex w-full min-w-0 flex-col gap-2 lg:order-1 lg:w-[60%] lg:shrink-0">
+          <div className="order-2 flex w-full min-w-0 flex-col gap-2 lg:order-1 lg:min-w-0 lg:flex-1">
             <div className="relative min-w-0">
               <Search
                 className="pointer-events-none absolute start-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground"
@@ -1022,45 +1023,57 @@ function CreateCard({
   onChange: (editor: Editor) => void
   onSave: () => void
 }) {
+  const desktop = useDesktop()
   const [open, setOpen] = useState(false)
+  // Desktop stays expanded; mobile keeps the collapsible accordion.
+  const expanded = desktop || open
 
   return (
     <section className="order-1 flex w-full min-w-0 flex-col overflow-hidden rounded-md border border-border bg-card lg:order-2 lg:h-fit lg:w-[450px] lg:shrink-0">
-      <button
-        type="button"
-        className={cn(
-          "pressable flex w-full items-center gap-2 px-4 py-3 text-start transition-[border-color] duration-300",
-          open ? "border-b border-border/70" : "border-b border-transparent"
-        )}
-        aria-expanded={open}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <div className="min-w-0 flex-1">
+      {desktop ? (
+        <div className="border-b border-border/70 px-4 py-3">
           <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
         </div>
-        <ChevronDown
+      ) : (
+        <button
+          type="button"
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
-            open && "rotate-180"
+            "pressable flex w-full items-center gap-2 px-4 py-3 text-start transition-[border-color] duration-300",
+            open ? "border-b border-border/70" : "border-b border-transparent"
           )}
-          aria-hidden
-        />
-      </button>
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+        >
+          <div className="min-w-0 flex-1">
+            <EditorHeader title={he.manager.organization.addTitles[create.kind]} kind={create.kind} />
+          </div>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform duration-300 ease-out",
+              open && "rotate-180"
+            )}
+            aria-hidden
+          />
+        </button>
+      )}
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-300 ease-out",
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          desktop ? "grid-rows-[1fr]" : expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         )}
       >
         <div
-          className={cn("min-h-0 overflow-hidden", !open && "pointer-events-none")}
-          aria-hidden={!open}
-          inert={open ? undefined : true}
+          className={cn(
+            "min-h-0 overflow-hidden",
+            !expanded && "pointer-events-none"
+          )}
+          aria-hidden={!expanded}
+          inert={expanded ? undefined : true}
         >
           <div
             className={cn(
               "transition-[opacity,transform] duration-300 ease-out",
-              open ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
+              expanded ? "translate-y-0 opacity-100" : "-translate-y-1 opacity-0"
             )}
           >
             <EditorForm

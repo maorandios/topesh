@@ -22,7 +22,7 @@ export default function ManagerLayout({
             <div className="flex min-w-0 flex-1 flex-col">
               <ManagerMobileTopBar />
               <PullToRefresh>
-                <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pt-[env(safe-area-inset-top)]">
+                <main className="flex min-h-0 min-w-0 flex-1 flex-col pb-[calc(4.75rem+env(safe-area-inset-bottom))] lg:pb-0 lg:pt-[env(safe-area-inset-top)]">
                   {children}
                 </main>
               </PullToRefresh>

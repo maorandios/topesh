@@ -1,5 +1,6 @@
-import { SettingsScreen } from "@/features/manager/settings-screen"
+import { redirect } from "next/navigation"
 
-export default function SettingsPage() {
-  return <SettingsScreen />
+/** Settings opens as a side panel from the nav; no dedicated desktop page. */
+export default function ManagerSettingsPage() {
+  redirect("/manager")
 }

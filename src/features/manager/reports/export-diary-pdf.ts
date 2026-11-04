@@ -3,18 +3,24 @@ import { diaryFileBasename } from "@/features/manager/reports/diary-filename"
 import { downloadBlob } from "@/features/manager/reports/download"
 import {
   createHebrewPdf,
-  drawHeaderBand,
-  drawMetaLines,
+  drawDocumentHeader,
+  drawFieldGrid,
+  drawHairline,
   drawRightText,
   drawSectionTitle,
   drawTable,
   ensureSpace,
-  PAGE,
   MARGIN,
+  PAGE,
   pdfBytes,
+  type PdfCtx,
 } from "@/features/manager/reports/pdf-draw"
 import { he } from "@/i18n/he"
-import { formatWorkDate, formatWorkDateNumeric } from "@/lib/format"
+import { formatWorkDateNumeric, jerusalemToday } from "@/lib/format"
+
+export type DiaryPdfOptions = {
+  generatedBy?: string
+}
 
 function statusLabel(status: ManagerDiaryDetail["status"]) {
   if (status === "pending") return he.leader.status.pending
@@ -22,47 +28,71 @@ function statusLabel(status: ManagerDiaryDetail["status"]) {
   return he.leader.status.submitted
 }
 
-export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail) {
+function drawBulletList(ctx: PdfCtx, items: string[], emptyText: string) {
+  if (items.length === 0) {
+    ensureSpace(ctx, 16)
+    drawRightText(ctx, emptyText, PAGE.width - MARGIN, ctx.y, 9)
+    ctx.y -= 16
+    return
+  }
+  const bulletGap = 10
+  for (const item of items) {
+    ensureSpace(ctx, 15)
+    const bulletWidth = drawRightText(ctx, "•", PAGE.width - MARGIN, ctx.y, 9)
+    drawRightText(ctx, item, PAGE.width - MARGIN - bulletWidth - bulletGap, ctx.y, 9)
+    ctx.y -= 14
+  }
+  ctx.y -= 4
+}
+
+export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail, options?: DiaryPdfOptions) {
   const ctx = await createHebrewPdf()
-  drawHeaderBand(
-    ctx,
-    "יומן עבודה — TOPESH",
-    `${he.manager.panel.workDiaryForDate} ${formatWorkDate(diary.workDate)}`
-  )
-  drawMetaLines(ctx, [
-    `סטטוס: ${statusLabel(diary.status)}`,
-    `${he.manager.dashboard.columns.company}: ${diary.companyName}`,
-    `${he.manager.dashboard.columns.customer}: ${diary.customerName}`,
-    `${he.manager.dashboard.columns.site}: ${diary.siteName}`,
-    diary.projectName ? `${he.manager.diaries.project}: ${diary.projectName}` : "",
-    diary.subSiteName ? `${he.manager.dashboard.columns.subSite}: ${diary.subSiteName}` : "",
-    `${he.manager.dashboard.columns.leader}: ${diary.teamLeaderName}`,
-    `${he.manager.diaries.workOrder}: ${diary.workOrderNumber}`,
-    `תאריך ביצוע: ${formatWorkDateNumeric(diary.workDate)}`,
-  ].filter(Boolean))
+  const generatedAt = formatWorkDateNumeric(jerusalemToday())
+  const generatedBy = options?.generatedBy?.trim() || "—"
+
+  drawDocumentHeader(ctx, {
+    title: 'ט.י טופ אש בע"מ',
+    subtitle: "יומן עבודה",
+    meta: [
+      { label: "תאריך הפקת יומן", value: generatedAt },
+      { label: "הופק ע״י", value: generatedBy },
+    ],
+  })
+
+  const details: { label: string; value: string }[] = [
+    { label: "סטטוס", value: statusLabel(diary.status) },
+    { label: "תאריך ביצוע", value: formatWorkDateNumeric(diary.workDate) },
+    { label: he.manager.dashboard.columns.company, value: diary.companyName },
+    { label: he.manager.dashboard.columns.customer, value: diary.customerName },
+    { label: he.manager.dashboard.columns.site, value: diary.siteName },
+    {
+      label: he.manager.dashboard.columns.subSite,
+      value: diary.subSiteName || "—",
+    },
+    { label: he.manager.diaries.project, value: diary.projectName || "—" },
+    { label: he.manager.diaries.workOrder, value: diary.workOrderNumber },
+    { label: he.manager.dashboard.columns.leader, value: diary.teamLeaderName },
+  ]
+
+  drawFieldGrid(ctx, details, { columns: 2 })
+  ctx.y -= 10
+  drawHairline(ctx)
 
   drawSectionTitle(ctx, he.leader.form.workersTitle)
-  if (diary.workers.length === 0) {
-    ensureSpace(ctx, 14)
-    drawRightText(ctx, he.leader.form.readOnlyWorkers, PAGE.width - MARGIN, ctx.y, 9)
-    ctx.y -= 18
-  } else {
-    for (const worker of diary.workers) {
-      ensureSpace(ctx, 14)
-      drawRightText(ctx, `• ${worker.fullName}`, PAGE.width - MARGIN, ctx.y, 9)
-      ctx.y -= 14
-    }
-    ctx.y -= 4
-  }
+  drawBulletList(
+    ctx,
+    diary.workers.map((worker) => worker.fullName),
+    he.leader.form.readOnlyWorkers
+  )
 
   drawSectionTitle(ctx, he.leader.form.workTitle)
   drawTable(
     ctx,
     [
-      { key: "domain", label: he.leader.form.system, width: 120 },
-      { key: "component", label: he.leader.form.component, width: 160 },
-      { key: "qty", label: he.leader.form.quantity, width: 60 },
-      { key: "unit", label: he.leader.form.units, width: 70 },
+      { key: "domain", label: he.leader.form.system, width: 130 },
+      { key: "component", label: he.leader.form.component, width: 180 },
+      { key: "qty", label: he.leader.form.quantity, width: 55 },
+      { key: "unit", label: he.leader.form.units, width: 55 },
     ],
     diary.items.map((item) => ({
       domain: item.domainName,
@@ -70,26 +100,18 @@ export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail) {
       qty: String(item.quantity),
       unit: item.unit,
     })),
-    { emptyText: he.leader.form.readOnlyItems }
+    { emptyText: he.leader.form.readOnlyItems, fitPageWidth: true }
   )
 
   drawSectionTitle(ctx, he.leader.form.checksTitle)
-  const checked = diary.checkboxes.filter((item) => item.checked)
-  if (checked.length === 0) {
-    ensureSpace(ctx, 14)
-    drawRightText(ctx, he.leader.form.readOnlyChecks, PAGE.width - MARGIN, ctx.y, 9)
-    ctx.y -= 18
-  } else {
-    for (const check of checked) {
-      ensureSpace(ctx, 14)
-      drawRightText(ctx, `• ${check.label}`, PAGE.width - MARGIN, ctx.y, 9)
-      ctx.y -= 14
-    }
-    ctx.y -= 4
-  }
+  drawBulletList(
+    ctx,
+    diary.checkboxes.filter((item) => item.checked).map((item) => item.label),
+    he.leader.form.readOnlyChecks
+  )
 
   drawSectionTitle(ctx, he.leader.form.notesTitle)
-  ensureSpace(ctx, 14)
+  ensureSpace(ctx, 16)
   drawRightText(
     ctx,
     diary.notes.trim() || he.leader.form.readOnlyNotes,
@@ -101,8 +123,8 @@ export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail) {
   return pdfBytes(ctx)
 }
 
-export async function exportDiaryPdf(diary: ManagerDiaryDetail) {
-  const bytes = await buildDiaryPdfBytes(diary)
+export async function exportDiaryPdf(diary: ManagerDiaryDetail, options?: DiaryPdfOptions) {
+  const bytes = await buildDiaryPdfBytes(diary, options)
   downloadBlob(
     new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
     `${diaryFileBasename(diary)}.pdf`

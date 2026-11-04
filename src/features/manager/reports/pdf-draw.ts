@@ -141,6 +141,105 @@ export function drawHeaderBand(ctx: PdfCtx, title: string, subtitle: string) {
   ctx.y = PAGE.height - 88
 }
 
+/** Bold Hebrew label on the right, regular value to its left — avoids RTL/digit collisions. */
+export function drawLabelValue(
+  ctx: PdfCtx,
+  label: string,
+  value: string,
+  xRight: number,
+  y: number,
+  size = 9
+) {
+  const labelText = `${label}:`
+  const labelWidth = measureMixed(ctx, labelText, size, true)
+  const gap = 8
+  const valueWidth = measureMixed(ctx, value, size, false)
+  // Reserve a stable label column so digits never collide into Hebrew labels.
+  const labelColumn = Math.max(labelWidth, size * 7)
+  drawMixedAt(ctx, ctx.page, labelText, xRight - labelWidth, y, size, true)
+  drawMixedAt(
+    ctx,
+    ctx.page,
+    value,
+    xRight - labelColumn - gap - valueWidth,
+    y,
+    size,
+    false
+  )
+}
+
+export function drawHairline(ctx: PdfCtx, strong = false) {
+  ensureSpace(ctx, 10)
+  ctx.page.drawLine({
+    start: { x: MARGIN, y: ctx.y + 4 },
+    end: { x: PAGE.width - MARGIN, y: ctx.y + 4 },
+    thickness: strong ? 0.9 : 0.45,
+    color: strong ? COLORS.ink : COLORS.line,
+  })
+  ctx.y -= 12
+}
+
+/**
+ * Two-column definition grid: label above value, full page width.
+ * First field in each pair sits on the right (RTL).
+ */
+export function drawFieldGrid(
+  ctx: PdfCtx,
+  fields: { label: string; value: string }[],
+  options?: { columns?: 1 | 2 }
+) {
+  const columns = options?.columns ?? 2
+  const colGap = 16
+  const contentWidth = PAGE.width - MARGIN * 2
+  const colWidth = (contentWidth - colGap * (columns - 1)) / columns
+  const blockHeight = 30
+
+  for (let i = 0; i < fields.length; i += columns) {
+    ensureSpace(ctx, blockHeight + 6)
+    const top = ctx.y
+    for (let c = 0; c < columns; c++) {
+      const field = fields[i + c]
+      if (!field) continue
+      const colRight = PAGE.width - MARGIN - c * (colWidth + colGap)
+      drawRightText(ctx, field.label, colRight, top, 7.5, true)
+      let value = field.value || "—"
+      while (value.length > 1 && measureMixed(ctx, value, 9.5, false) > colWidth - 2) {
+        value = value.slice(0, -1)
+      }
+      if (value !== (field.value || "—")) value = `${value}…`
+      drawRightText(ctx, value, colRight, top - 13, 9.5, false)
+    }
+    ctx.y = top - blockHeight
+    ctx.page.drawLine({
+      start: { x: MARGIN, y: ctx.y + 8 },
+      end: { x: PAGE.width - MARGIN, y: ctx.y + 8 },
+      thickness: 0.4,
+      color: COLORS.line,
+    })
+    ctx.y -= 2
+  }
+}
+
+/** Clean company document header: title, subtitle, hairline, meta grid. */
+export function drawDocumentHeader(
+  ctx: PdfCtx,
+  options: {
+    title: string
+    subtitle: string
+    meta: { label: string; value: string }[]
+  }
+) {
+  drawRightText(ctx, options.title, PAGE.width - MARGIN, ctx.y, 18, true)
+  ctx.y -= 22
+  drawRightText(ctx, options.subtitle, PAGE.width - MARGIN, ctx.y, 12, true)
+  ctx.y -= 14
+  drawHairline(ctx, true)
+  if (options.meta.length > 0) {
+    drawFieldGrid(ctx, options.meta, { columns: Math.min(2, options.meta.length) as 1 | 2 })
+    ctx.y -= 4
+  }
+}
+
 export function drawMetaLines(ctx: PdfCtx, lines: string[]) {
   for (const line of lines) {
     ensureSpace(ctx, 14)
@@ -151,23 +250,42 @@ export function drawMetaLines(ctx: PdfCtx, lines: string[]) {
 }
 
 export function drawSectionTitle(ctx: PdfCtx, title: string) {
-  ensureSpace(ctx, 28)
-  drawRightText(ctx, title, PAGE.width - MARGIN, ctx.y, 12, true)
-  ctx.y -= 18
+  ensureSpace(ctx, 42)
+  ctx.y -= 10
+  drawRightText(ctx, title, PAGE.width - MARGIN, ctx.y, 11, true)
+  ctx.y -= 8
+  ctx.page.drawLine({
+    start: { x: MARGIN, y: ctx.y + 2 },
+    end: { x: PAGE.width - MARGIN, y: ctx.y + 2 },
+    thickness: 0.7,
+    color: COLORS.ink,
+  })
+  ctx.y -= 14
 }
 
 export type TableColumn = { key: string; label: string; width: number }
+
+function tableTextBaseline(cursorY: number, rowHeight: number, size: number) {
+  // Cell top is cursorY + 4; center text optically within the row.
+  return cursorY + 4 - rowHeight / 2 - size * 0.32
+}
 
 export function drawTable(
   ctx: PdfCtx,
   columns: TableColumn[],
   rows: Record<string, string>[],
-  options?: { emptyText?: string }
+  options?: { emptyText?: string; fitPageWidth?: boolean }
 ) {
-  const totalWidth = columns.reduce((sum, col) => sum + col.width, 0)
+  const available = PAGE.width - MARGIN * 2
+  const baseWidth = columns.reduce((sum, col) => sum + col.width, 0)
+  const scale = options?.fitPageWidth && baseWidth > 0 ? available / baseWidth : 1
+  const cols = columns.map((col) => ({ ...col, width: col.width * scale }))
+  const totalWidth = options?.fitPageWidth ? available : baseWidth
   const startX = PAGE.width - MARGIN - totalWidth
-  const rowHeight = 18
-  const headerHeight = 20
+  const rowHeight = 24
+  const headerHeight = 26
+  const headerSize = 8
+  const bodySize = 8
 
   const paintHeader = () => {
     ensureSpace(ctx, headerHeight + 8)
@@ -178,11 +296,12 @@ export function drawTable(
       height: headerHeight,
       color: COLORS.header,
     })
+    const textY = tableTextBaseline(ctx.y, headerHeight, headerSize)
     let x = PAGE.width - MARGIN
-    for (const col of columns) {
+    for (const col of cols) {
       x -= col.width
-      const width = measureMixed(ctx, col.label, 8, true)
-      drawMixedAt(ctx, ctx.page, col.label, x + col.width - 4 - width, ctx.y - 10, 8, true)
+      const width = measureMixed(ctx, col.label, headerSize, true)
+      drawMixedAt(ctx, ctx.page, col.label, x + col.width - 4 - width, textY, headerSize, true)
     }
     ctx.y -= headerHeight
   }
@@ -191,7 +310,7 @@ export function drawTable(
 
   const body = rows.length
     ? rows
-    : [{ [columns[0]!.key]: options?.emptyText ?? "אין נתונים" }]
+    : [{ [cols[0]!.key]: options?.emptyText ?? "אין נתונים" }]
 
   body.forEach((row, index) => {
     if (ctx.y - rowHeight < MARGIN + 28) {
@@ -217,21 +336,21 @@ export function drawTable(
       borderColor: COLORS.line,
       borderWidth: 0.4,
     })
+    const textY = tableTextBaseline(ctx.y, rowHeight, bodySize)
     let x = PAGE.width - MARGIN
-    for (const col of columns) {
+    for (const col of cols) {
       x -= col.width
       let value = row[col.key] ?? ""
-      const size = 7.5
-      while (value.length > 1 && measureMixed(ctx, value, size, false) > col.width - 6) {
+      while (value.length > 1 && measureMixed(ctx, value, bodySize, false) > col.width - 6) {
         value = value.slice(0, -1)
       }
       if (value !== (row[col.key] ?? "")) value = `${value}…`
-      const width = measureMixed(ctx, value, size, false)
-      drawMixedAt(ctx, ctx.page, value, x + col.width - 3 - width, ctx.y - 10, size, false)
+      const width = measureMixed(ctx, value, bodySize, false)
+      drawMixedAt(ctx, ctx.page, value, x + col.width - 3 - width, textY, bodySize, false)
     }
     ctx.y -= rowHeight
   })
-  ctx.y -= 10
+  ctx.y -= 12
 }
 
 export async function pdfBytes(ctx: PdfCtx) {

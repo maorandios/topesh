@@ -19,7 +19,7 @@ export function ThemeModePicker({ className }: { className?: string }) {
       role="radiogroup"
       aria-label={he.theme.label}
       className={cn(
-        "inline-flex w-full max-w-sm overflow-hidden rounded-md border border-border bg-card p-1",
+        "inline-flex w-full max-w-sm rounded-lg border border-border/70 bg-muted/30 p-0.5",
         className
       )}
     >
@@ -33,13 +33,13 @@ export function ThemeModePicker({ className }: { className?: string }) {
             aria-checked={active}
             onClick={() => setTheme(value)}
             className={cn(
-              "pressable inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-sm px-3 text-sm font-medium transition-colors",
+              "pressable inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 text-xs transition-colors",
               active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                ? "bg-card font-medium text-foreground shadow-sm ring-1 ring-border/80"
+                : "font-normal text-muted-foreground hover:text-foreground"
             )}
           >
-            <Icon className="size-4 shrink-0" aria-hidden />
+            <Icon className="size-3.5 shrink-0 opacity-80" aria-hidden />
             {label}
           </button>
         )

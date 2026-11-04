@@ -17,9 +17,10 @@ export function diariesZipBasename(diaries: ManagerDiaryDetail[]) {
   return sanitizeFilenamePart(`יומנים לתאריך_${datePart}`)
 }
 
-export async function exportDiariesZip(
+export async function buildDiariesZipBlob(
   diaries: ManagerDiaryDetail[],
-  kind: "excel" | "pdf"
+  kind: "excel" | "pdf",
+  options?: { generatedBy?: string }
 ) {
   const zip = new JSZip()
   const usedNames = new Map<string, number>()
@@ -36,11 +37,19 @@ export async function exportDiariesZip(
       const buffer = await buildDiaryExcelBuffer(diary)
       zip.file(filename, buffer)
     } else {
-      const bytes = await buildDiaryPdfBytes(diary)
+      const bytes = await buildDiaryPdfBytes(diary, options)
       zip.file(filename, bytes)
     }
   }
 
-  const blob = await zip.generateAsync({ type: "blob" })
+  return zip.generateAsync({ type: "blob" })
+}
+
+export async function exportDiariesZip(
+  diaries: ManagerDiaryDetail[],
+  kind: "excel" | "pdf",
+  options?: { generatedBy?: string }
+) {
+  const blob = await buildDiariesZipBlob(diaries, kind, options)
   downloadBlob(blob, `${diariesZipBasename(diaries)}.zip`)
 }

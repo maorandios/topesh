@@ -447,10 +447,17 @@ export function DashboardScreen() {
           }}
         />
         <div className="flex flex-col gap-3 lg:hidden">
-          <div className="overflow-hidden rounded-md border border-border bg-card">
-            <div className="border-b border-border bg-muted/70 px-2 py-2 last:border-b-0">
+          <div
+            className={cn(
+              "app-sticky-bar sticky z-20 -mx-4 border-b border-border px-4 py-2",
+              "top-[calc(3.5rem+env(safe-area-inset-top))]"
+            )}
+          >
+            <div className="rounded-md border border-border bg-card px-2 py-2">
               {mobileQuickFilters}
             </div>
+          </div>
+          <div className="rounded-md border border-border bg-card">
             {diaries.length === 0 ? null : (
               <ul>
                 {visibleDiaries.map((diary) => (
@@ -694,17 +701,17 @@ function DiaryTable({
           <col className="w-[7.5rem]" />
           <col className="w-[5.5rem]" />
         </colgroup>
-        <thead className="sticky top-0 z-30 bg-muted">
-          <tr className="bg-muted text-foreground">
-            <th colSpan={headers.length} className="bg-muted px-3 pt-3 pb-1.5 font-normal">
+        <thead className="app-sticky-bar sticky top-0 z-30">
+          <tr className="text-foreground">
+            <th colSpan={headers.length} className="px-3 pt-3 pb-1.5 font-normal">
               <div className="flex justify-end">{toolbar}</div>
             </th>
           </tr>
-          <tr className="border-b border-border bg-muted text-foreground">
+          <tr className="border-b border-border text-foreground">
             {headers.map((header) => (
               <th
                 key={header.key}
-                className="bg-muted px-2 pt-1.5 pb-2.5 text-center font-medium whitespace-nowrap first:ps-3 last:pe-3"
+                className="px-2 pt-1.5 pb-2.5 text-center font-medium whitespace-nowrap first:ps-3 last:pe-3"
               >
                 {header.label}
               </th>
