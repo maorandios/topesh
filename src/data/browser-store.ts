@@ -14,18 +14,22 @@ import {
   editDiary,
   markDiaryCancelled,
   markDiarySubmitted,
+  reopenDiaryForSignatureCapture,
   saveCompany,
   deleteComponent,
   deleteDomain,
+  deleteTechnician,
   saveComponent,
   saveCustomer,
   saveDomain,
   saveManagerUser,
   saveSite,
   saveTeamLeader,
+  saveTechnician,
   setCompanyActive,
   setCustomerActive,
   setSiteActive,
+  setTechnicianActive,
   setUserActive,
   updateAssignment,
   type CustomerInput,
@@ -33,6 +37,7 @@ import {
   type ManagerUserInput,
   type SiteInput,
   type TeamLeaderInput,
+  type TechnicianInput,
 } from "@/data/manager"
 import {
   createTeamLeaderRepository,
@@ -218,6 +223,12 @@ export function markManagerDiarySubmitted(diaryId: string) {
   return mutate(markDiarySubmitted(db, diaryId))
 }
 
+export function reopenManagerDiaryForSignature(diaryId: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const }
+  return mutate(reopenDiaryForSignatureCapture(db, diaryId))
+}
+
 export function duplicateManagerDiary(diaryId: string) {
   const db = ensureRepository().readDb()
   if (!db) return { ok: false as const }
@@ -237,6 +248,25 @@ export function saveManagerCustomer(id: string | null, input: CustomerInput) {
 export function saveManagerSite(id: string | null, input: SiteInput) {
   const db = ensureRepository().readDb()
   return db ? mutate(saveSite(db, id, input)) : { ok: false as const }
+}
+
+export function saveManagerTechnician(id: string | null, input: TechnicianInput) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const }
+  return mutate(saveTechnician(db, id, input))
+}
+
+export function deleteManagerTechnician(id: string) {
+  const db = ensureRepository().readDb()
+  if (!db) return { ok: false as const, reason: "not-found" as const }
+  const result = deleteTechnician(db, id)
+  if ("reason" in result) return { ok: false as const, reason: result.reason }
+  return mutate(result.db)
+}
+
+export function setManagerTechnicianActive(id: string, isActive: boolean) {
+  const db = ensureRepository().readDb()
+  return db ? mutate(setTechnicianActive(db, id, isActive)) : { ok: false as const }
 }
 
 export function setManagerCompanyActive(id: string, isActive: boolean) {

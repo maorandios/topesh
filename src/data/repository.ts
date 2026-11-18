@@ -1,4 +1,4 @@
-import { findComponent, findDomain, findSite } from "@/data/lookups"
+import { findComponent, findDomain, findSite, findTechnician } from "@/data/lookups"
 import { parseDatabase } from "@/data/migrate"
 import { addQuantities, normalizeQuantity } from "@/data/quantity"
 import { createSeed, type MockDb } from "@/data/seed"
@@ -39,6 +39,8 @@ export type LeaderCheckboxView = {
 export type LeaderDiaryDetail = TeamLeaderDiary & {
   siteName: string
   subSiteName: string
+  accompanyingTechnicianName: string
+  accompanyingTechnicianPhone: string
   workers: { id: string; fullName: string }[]
   items: LeaderDiaryItemView[]
   checkboxes: LeaderCheckboxView[]
@@ -49,6 +51,8 @@ export type DiaryDraft = {
   items: { id: string; componentId: string; quantity: number }[]
   checkedIds: string[]
   notes: string
+  siteManagerName: string
+  siteManagerSignatureDataUrl: string | null
 }
 
 export type RepoResult<T> =
@@ -61,6 +65,7 @@ export type RepositorySnapshot =
 
 const NOTES_LIMIT = 2000
 const NAME_LIMIT = 80
+const SIGNATURE_DATA_URL_LIMIT = 400_000
 
 export function createMemoryStorage(initial?: Record<string, string>): KeyValueStorage {
   const values = new Map(Object.entries(initial ?? {}))
@@ -151,7 +156,8 @@ export function createTeamLeaderRepository(
       if (current.status !== "pending") {
         return { ok: true, unchanged: true, data: toDetail(snapshot.db, current) }
       }
-      const applied = applyDraft(snapshot.db, diaryId, draft)
+      const payload = draftForLeaderWrite(snapshot.db, current, draft)
+      const applied = applyDraft(snapshot.db, diaryId, payload)
       if (!applied) return { ok: false, reason: "invalid" }
       writeReady(applied)
       const detail = detailForLeader(applied, teamLeaderId, diaryId)
@@ -172,13 +178,19 @@ export function createTeamLeaderRepository(
       if (current.status !== "pending") {
         return { ok: true, unchanged: true, data: toDetail(snapshot.db, current) }
       }
-      const applied = applyDraft(snapshot.db, diaryId, draft)
+      const payload = draftForLeaderWrite(snapshot.db, current, draft)
+      const applied = applyDraft(snapshot.db, diaryId, payload)
       if (!applied) return { ok: false, reason: "invalid" }
       const locked: MockDb = {
         ...applied,
         diaries: applied.diaries.map((diary) =>
           diary.id === diaryId
-            ? { ...diary, status: "submitted", submittedAt }
+            ? {
+                ...diary,
+                status: "submitted",
+                submittedAt,
+                signatureCaptureOnly: false,
+              }
             : diary
         ),
       }
@@ -187,6 +199,30 @@ export function createTeamLeaderRepository(
       if (!detail) return { ok: false, reason: "not-found" }
       return { ok: true, unchanged: false, data: detail }
     },
+  }
+}
+
+/** When reopened for signature only, ignore non-signature draft changes. */
+function draftForLeaderWrite(
+  db: MockDb,
+  current: MockDb["diaries"][number],
+  draft: DiaryDraft
+): DiaryDraft {
+  if (!current.signatureCaptureOnly) return draft
+  const locked = toDetail(db, current)
+  return {
+    workers: locked.workers.map((worker) => ({ id: worker.id, fullName: worker.fullName })),
+    items: locked.items.map((item) => ({
+      id: item.id,
+      componentId: item.componentId,
+      quantity: item.quantity,
+    })),
+    checkedIds: locked.checkboxes
+      .filter((option) => option.checked)
+      .map((option) => option.checkboxId),
+    notes: locked.notes,
+    siteManagerName: draft.siteManagerName,
+    siteManagerSignatureDataUrl: draft.siteManagerSignatureDataUrl,
   }
 }
 
@@ -225,6 +261,22 @@ function applyDraft(db: MockDb, diaryId: string, draft: DiaryDraft): MockDb | nu
   const notes = draft.notes.trim()
   if (notes.length > NOTES_LIMIT) return null
 
+  const siteManagerName = draft.siteManagerName.trim()
+  const siteManagerSignatureDataUrl = draft.siteManagerSignatureDataUrl
+  if (siteManagerName.length > NAME_LIMIT) return null
+  if (siteManagerSignatureDataUrl) {
+    if (
+      !siteManagerName ||
+      !siteManagerSignatureDataUrl.startsWith("data:image/") ||
+      siteManagerSignatureDataUrl.length > SIGNATURE_DATA_URL_LIMIT
+    ) {
+      return null
+    }
+  }
+  const signatureFields = siteManagerSignatureDataUrl
+    ? { siteManagerName, siteManagerSignatureDataUrl }
+    : { siteManagerName: null, siteManagerSignatureDataUrl: null }
+
   const workers = draft.workers
     .map((worker) => ({ id: worker.id, fullName: worker.fullName.trim() }))
     .filter((worker) => worker.fullName.length > 0)
@@ -260,7 +312,7 @@ function applyDraft(db: MockDb, diaryId: string, draft: DiaryDraft): MockDb | nu
   return {
     ...db,
     diaries: db.diaries.map((diary) =>
-      diary.id === diaryId ? { ...diary, notes } : diary
+      diary.id === diaryId ? { ...diary, notes, ...signatureFields } : diary
     ),
     workers: [
       ...db.workers.filter((worker) => worker.diaryId !== diaryId),
@@ -302,11 +354,21 @@ function toDetail(db: MockDb, diary: MockDb["diaries"][number]): LeaderDiaryDeta
     projectName: diary.projectName,
     status: diary.status,
     notes: diary.notes,
+    siteManagerName: diary.siteManagerName ?? null,
+    siteManagerSignatureDataUrl: diary.siteManagerSignatureDataUrl ?? null,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
     cancelledAt: diary.cancelledAt ?? null,
     duplicatedFromId: diary.duplicatedFromId ?? null,
+    signatureCaptureOnly: Boolean(diary.signatureCaptureOnly),
+    accompanyingTechnicianId: diary.accompanyingTechnicianId ?? null,
     siteName: findSite(db, diary.siteId)?.name ?? "",
+    accompanyingTechnicianName: diary.accompanyingTechnicianId
+      ? findTechnician(db, diary.accompanyingTechnicianId)?.fullName ?? ""
+      : "",
+    accompanyingTechnicianPhone: diary.accompanyingTechnicianId
+      ? findTechnician(db, diary.accompanyingTechnicianId)?.phone ?? ""
+      : "",
     workers: db.workers
       .filter((worker) => worker.diaryId === diary.id)
       .map((worker) => ({ id: worker.id, fullName: worker.fullName })),
@@ -346,5 +408,5 @@ function compareSummaries(a: LeaderDiarySummary, b: LeaderDiarySummary) {
 }
 
 function isCurrentVersion(value: unknown): boolean {
-  return Boolean(value && typeof value === "object" && "version" in value && value.version === 7)
+  return Boolean(value && typeof value === "object" && "version" in value && value.version === 10)
 }

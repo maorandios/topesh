@@ -50,6 +50,15 @@ export type User = {
   isActive: boolean
 }
 
+/** Accompanying technician catalog entry (not a login user). */
+export type Technician = {
+  id: string
+  fullName: string
+  phone: string
+  isActive: boolean
+  createdAt: string
+}
+
 export type Domain = {
   id: string
   name: string
@@ -74,13 +83,24 @@ export type WorkDiary = {
   subSiteName: string
   projectName: string
   workOrderNumber: string
+  /** Optional accompanying technician from the org catalog. */
+  accompanyingTechnicianId: string | null
   status: DiaryStatus
   notes: string
+  /** Optional work-manager full name for signature. */
+  siteManagerName: string | null
+  /** Optional drawn signature as a PNG data URL. */
+  siteManagerSignatureDataUrl: string | null
   createdAt: string
   submittedAt: string | null
   cancelledAt: string | null
   /** Set when this diary was created via duplicate/שכפול. */
   duplicatedFromId: string | null
+  /**
+   * When true, the diary was reopened after submit so the team leader may only
+   * add/update the site-manager signature and resubmit.
+   */
+  signatureCaptureOnly: boolean
 }
 
 /** Team-leader views omit work-order and org assignment IDs. */

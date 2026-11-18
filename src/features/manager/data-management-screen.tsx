@@ -22,6 +22,7 @@ import {
   Trash,
   UserRound,
   Users,
+  Wrench,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
@@ -59,12 +60,14 @@ import {
   deleteManagerCompany,
   deleteManagerCustomer,
   deleteManagerSite,
+  deleteManagerTechnician,
   deleteManagerUser,
   saveManagerAccount,
   saveManagerCompany,
   saveManagerCustomer,
   saveManagerSite,
   saveManagerTeamLeader,
+  saveManagerTechnician,
   useManagerDb,
 } from "@/data/browser-store"
 import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
@@ -76,12 +79,13 @@ import { he } from "@/i18n/he"
 import { compareHebrew, sortByHebrewName, sortSelectOptions } from "@/lib/sort"
 import { cn } from "cn"
 
-type TabId = "companies" | "customers" | "sites" | "teamLeaders" | "managers"
+type TabId = "companies" | "customers" | "sites" | "technicians" | "teamLeaders" | "managers"
 
 type Editor =
   | { kind: "company"; id: string | null; name: string }
   | { kind: "customer"; id: string | null; name: string; companyId: string }
   | { kind: "site"; id: string | null; name: string; customerId: string }
+  | { kind: "technician"; id: string | null; fullName: string; phone: string }
   | {
       kind: "teamLeader"
       id: string | null
@@ -118,6 +122,7 @@ const tabs: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: "companies", label: he.manager.organization.tabs.companies, icon: Building2 },
   { id: "customers", label: he.manager.organization.tabs.customers, icon: Users },
   { id: "sites", label: he.manager.organization.tabs.sites, icon: MapPin },
+  { id: "technicians", label: he.manager.organization.tabs.technicians, icon: Wrench },
   { id: "teamLeaders", label: he.manager.organization.tabs.teamLeaders, icon: UserRound },
   { id: "managers", label: he.manager.organization.tabs.managers, icon: IdCard },
 ]
@@ -296,7 +301,7 @@ export function DataManagementScreen() {
         >
           <div
             dir="rtl"
-            className="flex w-max gap-3 px-4 lg:grid lg:w-full lg:grid-cols-5 lg:gap-3 lg:px-0"
+            className="flex w-max gap-3 px-4 lg:grid lg:w-full lg:grid-cols-6 lg:gap-3 lg:px-0"
           >
             {tabs.map((item) => {
               const selected = tab === item.id
@@ -454,6 +459,9 @@ function countDiaries(db: MockDb, tab: TabId, id: string) {
   if (tab === "companies") return db.diaries.filter((diary) => diary.companyId === id).length
   if (tab === "customers") return db.diaries.filter((diary) => diary.customerId === id).length
   if (tab === "sites") return db.diaries.filter((diary) => diary.siteId === id).length
+  if (tab === "technicians") {
+    return db.diaries.filter((diary) => diary.accompanyingTechnicianId === id).length
+  }
   if (tab === "teamLeaders") return db.diaries.filter((diary) => diary.teamLeaderId === id).length
   return 0
 }
@@ -606,6 +614,57 @@ function EntityList({
             he.manager.organization.index,
             he.manager.organization.name,
             he.manager.organization.customer,
+            he.manager.edit,
+            he.manager.organization.delete,
+          ]}
+          rows={rows}
+        />
+        <OrgNavList empty={navItems.length === 0} items={navItems} />
+      </>
+    )
+  }
+
+  if (tab === "technicians") {
+    const items = db.technicians
+      .filter(
+        (item) =>
+          !query || item.fullName.includes(query) || item.phone.includes(query)
+      )
+      .slice()
+      .sort((a, b) => compareHebrew(a.fullName, b.fullName))
+    const rows: TableRow[] = items.map((item, index) => ({
+      id: item.id,
+      cells: [String(index + 1), item.fullName, item.phone],
+      onEdit: () =>
+        onEdit({ kind: "technician", id: item.id, fullName: item.fullName, phone: item.phone }),
+      onDelete: () => onDelete("technicians", item.id),
+    }))
+    const navItems: OrgNavItem[] = items.map((item) => {
+      const diariesCount = countDiaries(db, "technicians", item.id)
+      return {
+        id: item.id,
+        kind: "technician",
+        name: item.fullName,
+        meta: String(diariesCount),
+        details: [
+          { label: he.manager.technicians.name, value: item.fullName },
+          { label: he.manager.technicians.phone, value: item.phone },
+          { label: he.manager.organization.diariesCount, value: String(diariesCount) },
+        ],
+        onEdit: () =>
+          onEdit({ kind: "technician", id: item.id, fullName: item.fullName, phone: item.phone }),
+        onDelete: () => onDelete("technicians", item.id),
+      }
+    })
+    return (
+      <>
+        <DataTable
+          empty={rows.length === 0}
+          mobile={false}
+          headers={[
+            he.manager.organization.index,
+            he.manager.technicians.name,
+            he.manager.technicians.phone,
             he.manager.edit,
             he.manager.organization.delete,
           ]}
@@ -1006,6 +1065,7 @@ function editorIcon(kind: Editor["kind"]): LucideIcon {
   if (kind === "company") return Building2
   if (kind === "customer") return Users
   if (kind === "site") return MapPin
+  if (kind === "technician") return Wrench
   if (kind === "manager") return IdCard
   return UserRound
 }
@@ -1309,6 +1369,30 @@ function EditorForm({
               </EditorField>
             </>
           ) : null}
+          {editor.kind === "technician" ? (
+            <>
+              <EditorField icon={Wrench} label={he.manager.technicians.name}>
+                <Input
+                  value={editor.fullName}
+                  className={editorInputClass}
+                  onChange={(event) => onChange({ ...editor, fullName: event.target.value })}
+                />
+              </EditorField>
+              <EditorField
+                icon={Phone}
+                label={he.manager.technicians.phone}
+                hint={he.manager.technicians.phoneInvalid}
+              >
+                <Input
+                  dir="ltr"
+                  inputMode="tel"
+                  value={editor.phone}
+                  className={editorInputClass}
+                  onChange={(event) => onChange({ ...editor, phone: event.target.value })}
+                />
+              </EditorField>
+            </>
+          ) : null}
           {editor.kind === "teamLeader" ? (
             <>
               <EditorField icon={UserRound} label={he.manager.teamLeaders.name}>
@@ -1393,6 +1477,9 @@ function createBlank(tab: TabId, db: MockDb | null): Editor {
   if (tab === "companies") return { kind: "company", id: null, name: "" }
   if (tab === "customers") return { kind: "customer", id: null, name: "", companyId: defaultCompanyId }
   if (tab === "sites") return { kind: "site", id: null, name: "", customerId: defaultCustomerId }
+  if (tab === "technicians") {
+    return { kind: "technician", id: null, fullName: "", phone: "" }
+  }
   if (tab === "teamLeaders") {
     return {
       kind: "teamLeader",
@@ -1419,6 +1506,12 @@ function persistEditor(editor: Editor) {
   if (editor.kind === "site") {
     return saveManagerSite(editor.id, { name: editor.name, customerId: editor.customerId })
   }
+  if (editor.kind === "technician") {
+    return saveManagerTechnician(editor.id, {
+      fullName: editor.fullName,
+      phone: editor.phone,
+    })
+  }
   if (editor.kind === "teamLeader") {
     return saveManagerTeamLeader(editor.id, {
       fullName: editor.fullName,
@@ -1439,6 +1532,7 @@ function persistDelete(kind: TabId, id: string) {
   if (kind === "companies") return deleteManagerCompany(id)
   if (kind === "customers") return deleteManagerCustomer(id)
   if (kind === "sites") return deleteManagerSite(id)
+  if (kind === "technicians") return deleteManagerTechnician(id)
   return deleteManagerUser(id)
 }
 
@@ -1447,12 +1541,19 @@ function editorTitle(editor: Editor | null) {
   if (editor.kind === "company") return he.manager.organization.tabs.companies
   if (editor.kind === "customer") return he.manager.organization.tabs.customers
   if (editor.kind === "site") return he.manager.organization.tabs.sites
+  if (editor.kind === "technician") return he.manager.organization.tabs.technicians
   if (editor.kind === "teamLeader") return he.manager.organization.tabs.teamLeaders
   return he.manager.organization.tabs.managers
 }
 
 function parseTab(value: string | null): TabId {
-  if (value === "customers" || value === "sites" || value === "teamLeaders" || value === "managers") {
+  if (
+    value === "customers" ||
+    value === "sites" ||
+    value === "technicians" ||
+    value === "teamLeaders" ||
+    value === "managers"
+  ) {
     return value
   }
   return "companies"

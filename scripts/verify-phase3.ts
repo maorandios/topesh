@@ -72,7 +72,7 @@ const v1 = {
 
 const migrated = parseDatabase(v1)
 assert.ok(migrated)
-assert.equal(migrated.version, 7)
+assert.equal(migrated.version, 10)
 assert.equal(migrated.companies[0]?.isActive, true)
 assert.equal(migrated.customers[0]?.isActive, true)
 assert.equal(migrated.sites[0]?.isActive, true)
@@ -111,7 +111,7 @@ assert.equal(leaderSubmitted.workers[0]?.fullName, "עובד שהוגש")
 assert.equal(leaderSubmitted.checkboxes.find((item) => item.checkboxId === "check-night")?.checked, true)
 assertNoWorkOrder(leaderSubmitted)
 const stored = JSON.parse(storage.getItem(MOCK_DB_KEY) ?? "{}") as { version?: number }
-assert.equal(stored.version, 7)
+assert.equal(stored.version, 10)
 const managerMigrated = getManagerDiary(repo.readDb()!, pending.id)
 assert.equal(managerMigrated?.workOrderNumber, "WO-MIG-1")
 
@@ -166,6 +166,7 @@ const assignment = {
   subSiteName: "אתר משנה חדש",
   projectName: "פרויקט חדש",
   workOrderNumber: "WO-NEW-9",
+  accompanyingTechnicianId: "tech-1",
 }
 const created = assignDiary(db, assignment, "2026-10-28T06:00:00.000Z")
 assert.ok(created)
@@ -179,6 +180,8 @@ const draft: DiaryDraft = {
   items: [{ id: "new-item", componentId, quantity: 4 }],
   checkedIds: ["check-height"],
   notes: "הערה מהשטח",
+  siteManagerName: "",
+  siteManagerSignatureDataUrl: null,
 }
 const saved = leaderRepo.saveDraft(leader.id, created.id, draft)
 assert.equal(saved.ok, true)

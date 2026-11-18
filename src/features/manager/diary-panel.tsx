@@ -19,12 +19,14 @@ import {
   Layers3,
   MapPin,
   MessageSquareText,
+  PenLine,
   Pencil,
   Plus,
   Settings,
   Trash2,
   UserRound,
   Users,
+  Wrench,
   X,
   XCircle,
   type LucideIcon,
@@ -34,6 +36,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { PanelNoticeBanner, PanelNoticeProvider, usePanelNotice } from "@/components/panel-notice"
 import { panelSurfaceClass, panelSurfaceStyle } from "@/components/shell/panel-surface"
+import { SignaturePad } from "@/components/signature-pad"
 import { Input } from "@/components/ui/input"
 import {
   DropdownMenu,
@@ -62,8 +65,16 @@ import {
   editManagerDiary,
   markManagerDiaryCancelled,
   markManagerDiarySubmitted,
+  reopenManagerDiaryForSignature,
 } from "@/data/browser-store"
-import { findCompany, findCustomer, findSite, findUser, activeDomainsFrom } from "@/data/lookups"
+import {
+  findCompany,
+  findCustomer,
+  findSite,
+  findTechnician,
+  findUser,
+  activeDomainsFrom,
+} from "@/data/lookups"
 import { diarySubmitMissing, getManagerDiary, type DiarySubmitField } from "@/data/manager"
 import { parseQuantityInput } from "@/data/quantity"
 import type { MockDb } from "@/data/seed"
@@ -110,10 +121,13 @@ type PanelDraft = {
   projectName: string
   workOrderNumber: string
   teamLeaderId: string
+  accompanyingTechnicianId: string
   workers: { id: string; fullName: string }[]
   items: DraftItem[]
   checkedIds: string[]
   notes: string
+  siteManagerName: string
+  siteManagerSignatureDataUrl: string | null
 }
 type ConfirmKind = "cancel" | "delete" | "submit"
 type TextField = "project" | "subSite" | "workOrder" | "notes" | `qty:${string}` | null
@@ -235,6 +249,7 @@ function createDraft(diary: PanelDiary): PanelDraft {
     projectName: diary.projectName,
     workOrderNumber: diary.workOrderNumber,
     teamLeaderId: diary.teamLeaderId,
+    accompanyingTechnicianId: diary.accompanyingTechnicianId ?? "",
     workers: diary.workers.map((worker) => ({ ...worker })),
     items: diary.items.map((item) => ({
       id: item.id,
@@ -247,6 +262,8 @@ function createDraft(diary: PanelDiary): PanelDraft {
     })),
     checkedIds: diary.checkboxes.filter((item) => item.checked).map((item) => item.checkboxId),
     notes: diary.notes,
+    siteManagerName: diary.siteManagerName ?? "",
+    siteManagerSignatureDataUrl: diary.siteManagerSignatureDataUrl ?? null,
   }
 }
 
@@ -340,12 +357,15 @@ function DiaryBody({
         subSiteName: draft.subSiteName,
         projectName: draft.projectName,
         workOrderNumber: draft.workOrderNumber,
+        accompanyingTechnicianId: draft.accompanyingTechnicianId || null,
       },
       {
         workers: draft.workers,
         items: parsedItems,
         checkedIds: draft.checkedIds,
         notes: draft.notes,
+        siteManagerName: draft.siteManagerName,
+        siteManagerSignatureDataUrl: draft.siteManagerSignatureDataUrl,
       }
     )
     setError(!result.ok)
@@ -426,6 +446,24 @@ function DiaryBody({
                 }
                 setShowMissing(false)
                 setConfirm("submit")
+              }),
+          },
+        ]
+      : []),
+    ...(diary.status === "submitted"
+      ? [
+          {
+            key: "signatureCapture",
+            label: he.manager.panel.signatureCapture,
+            icon: PenLine,
+            onClick: () =>
+              runAction(() => {
+                const result = reopenManagerDiaryForSignature(diary.id)
+                if (!result.ok) {
+                  notice.error(he.manager.panel.signatureCaptureFailed)
+                  return
+                }
+                notice.success(he.manager.panel.signatureCaptureDone)
               }),
           },
         ]
@@ -667,6 +705,8 @@ function DiaryView({
   const customerId = draft?.customerId ?? diary.customerId
   const siteId = draft?.siteId ?? diary.siteId
   const teamLeaderId = draft?.teamLeaderId ?? diary.teamLeaderId
+  const accompanyingTechnicianId =
+    draft?.accompanyingTechnicianId ?? diary.accompanyingTechnicianId ?? ""
   const projectName = draft?.projectName ?? diary.projectName
   const subSiteName = draft?.subSiteName ?? diary.subSiteName
   const workOrderNumber = draft?.workOrderNumber ?? diary.workOrderNumber
@@ -688,12 +728,25 @@ function DiaryView({
   const customerName = findCustomer(db, customerId)?.name ?? diary.customerName
   const siteName = findSite(db, siteId)?.name ?? diary.siteName
   const teamLeaderName = findUser(db, teamLeaderId)?.fullName ?? diary.teamLeaderName
+  const technician = accompanyingTechnicianId
+    ? findTechnician(db, accompanyingTechnicianId)
+    : null
+  const technicianDisplay = technician
+    ? `${technician.fullName} · ${technician.phone}`
+    : diary.accompanyingTechnicianName
+      ? `${diary.accompanyingTechnicianName}${
+          diary.accompanyingTechnicianPhone ? ` · ${diary.accompanyingTechnicianPhone}` : ""
+        }`
+      : he.manager.diaries.technicianNone
 
   const companies = db.companies.filter((item) => item.isActive || item.id === companyId)
   const customers = db.customers.filter((item) => item.isActive || item.id === customerId)
   const sites = db.sites.filter((item) => item.isActive || item.id === siteId)
   const leaders = db.users.filter(
     (user) => user.role === "teamLeader" && (user.isActive || user.id === teamLeaderId)
+  )
+  const technicians = db.technicians.filter(
+    (item) => item.isActive || item.id === accompanyingTechnicianId
   )
   const checkDefs = db.checkboxDefinitions
     .filter((item) => item.isActive || checkedIds.includes(item.id))
@@ -788,6 +841,23 @@ function DiaryView({
           options={sortSelectOptions(leaders.map((item) => ({ value: item.id, label: item.fullName })))}
           onChange={(value) => update({ teamLeaderId: value })}
         />
+        <FactSelect
+          editing={editing}
+          icon={Wrench}
+          label={he.manager.diaries.technician}
+          display={technicianDisplay}
+          value={accompanyingTechnicianId}
+          options={[
+            { value: "", label: he.manager.diaries.technicianNone },
+            ...sortSelectOptions(
+              technicians.map((item) => ({
+                value: item.id,
+                label: `${item.fullName} · ${item.phone}`,
+              }))
+            ),
+          ]}
+          onChange={(value) => update({ accompanyingTechnicianId: value })}
+        />
         <FactText
           editing={editing}
           active={activeTextField === "workOrder"}
@@ -834,6 +904,17 @@ function DiaryView({
         editing={editing}
         notes={notes}
         onChange={(value) => update({ notes: value })}
+      />
+      <SectionDivider />
+      <SiteManagerSignatureSection
+        editing={editing}
+        name={draft?.siteManagerName ?? diary.siteManagerName ?? ""}
+        signatureDataUrl={
+          draft?.siteManagerSignatureDataUrl ?? diary.siteManagerSignatureDataUrl ?? null
+        }
+        onChange={(siteManagerName, siteManagerSignatureDataUrl) =>
+          update({ siteManagerName, siteManagerSignatureDataUrl })
+        }
       />
     </div>
   )
@@ -1649,6 +1730,138 @@ function NotesSection({
         />
       )}
     </SectionShell>
+  )
+}
+
+function SiteManagerSignatureSection({
+  editing,
+  name,
+  signatureDataUrl,
+  onChange,
+}: {
+  editing: boolean
+  name: string
+  signatureDataUrl: string | null
+  onChange: (name: string, signatureDataUrl: string | null) => void
+}) {
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [draftName, setDraftName] = useState(name)
+  const [draftSignature, setDraftSignature] = useState<string | null>(signatureDataUrl)
+  const [padKey, setPadKey] = useState(0)
+  const trimmed = name.trim()
+  const hasSignature = Boolean(trimmed && signatureDataUrl)
+  const canSave = Boolean(draftName.trim() && draftSignature)
+
+  const openSheet = () => {
+    setDraftName(name)
+    setDraftSignature(signatureDataUrl)
+    setPadKey((value) => value + 1)
+    setSheetOpen(true)
+  }
+
+  const preview =
+    !trimmed || !signatureDataUrl ? (
+      <p className="text-xs text-muted-foreground">{he.leader.form.readOnlySignature}</p>
+    ) : (
+      <div className="flex flex-col gap-2">
+        <p className="text-sm leading-5 font-medium">{trimmed}</p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={signatureDataUrl}
+          alt={he.leader.form.signatureTitle}
+            className="h-16 w-full max-w-xs rounded-md border border-border/60 bg-card object-contain"
+        />
+      </div>
+    )
+
+  return (
+    <>
+      <SectionShell
+        icon={PenLine}
+        title={he.leader.form.signatureTitle}
+        action={
+          editing ? (
+            <button
+              type="button"
+              className={sectionAddClass}
+              aria-label={
+                hasSignature ? he.leader.form.signatureEdit : he.leader.form.signatureAdd
+              }
+              onClick={openSheet}
+            >
+              <Plus className="size-3.5" aria-hidden />
+            </button>
+          ) : undefined
+        }
+      >
+        {preview}
+      </SectionShell>
+
+      <MobileFilterPicker
+        open={sheetOpen}
+        title={he.leader.form.signatureTitle}
+        onClose={() => setSheetOpen(false)}
+        footer={
+          <div className="flex shrink-0 flex-col gap-2 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button
+              type="button"
+              size="touch"
+              className="w-full"
+              disabled={!canSave}
+              onClick={() => {
+                if (!canSave || !draftSignature) return
+                onChange(draftName.trim(), draftSignature)
+                setSheetOpen(false)
+              }}
+            >
+              {he.leader.form.signatureSave}
+            </Button>
+            {hasSignature ? (
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  onChange("", null)
+                  setSheetOpen(false)
+                }}
+              >
+                {he.leader.form.signatureClearAll}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4 px-4 py-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              {he.leader.form.signatureNameLabel}
+            </span>
+            <Input
+              autoFocus
+              value={draftName}
+              maxLength={80}
+              placeholder={he.leader.form.signatureNamePlaceholder}
+              className="h-[calc(2.25rem*1.1*1.1)] w-full min-w-0 rounded-md border border-border bg-card px-4 text-base text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-base"
+              onChange={(event) => setDraftName(event.target.value)}
+            />
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              {he.leader.form.signaturePadLabel}
+            </span>
+            <SignaturePad
+              key={padKey}
+              ariaLabel={he.leader.form.signaturePadLabel}
+              clearLabel={he.leader.form.signatureClearPad}
+              initialDataUrl={draftSignature}
+              onChange={setDraftSignature}
+            />
+          </div>
+        </div>
+      </MobileFilterPicker>
+    </>
   )
 }
 

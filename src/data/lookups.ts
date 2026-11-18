@@ -37,3 +37,8 @@ export function findComponent(db: MockDb, id: string) {
 export function findUser(db: MockDb, id: string) {
   return db.users.find((item) => item.id === id) ?? null
 }
+
+export function findTechnician(db: MockDb, id: string | null | undefined) {
+  if (!id) return null
+  return db.technicians.find((item) => item.id === id) ?? null
+}

@@ -39,6 +39,8 @@ const draft: DiaryDraft = {
   ],
   checkedIds: ["check-height", "check-night"],
   notes: "  בדיקת התקנה  ",
+  siteManagerName: "",
+  siteManagerSignatureDataUrl: null,
 }
 
 const saved = repo.saveDraft(uriUser.id, "diary-uri-floor", draft)
@@ -82,6 +84,8 @@ const again = repo.submit(
     items: [{ id: "item-extra", componentId: "fire-button", quantity: 9 }],
     checkedIds: [],
     notes: "כפילות",
+    siteManagerName: "",
+    siteManagerSignatureDataUrl: null,
   },
   "2026-10-28T13:00:00.000Z"
 )
@@ -98,6 +102,8 @@ const locked = repo.saveDraft(uriUser.id, "diary-uri-floor", {
   items: [],
   checkedIds: [],
   notes: "שינוי אחרי הגשה",
+  siteManagerName: "",
+  siteManagerSignatureDataUrl: null,
 })
 assert.equal(locked.ok, true)
 if (!locked.ok) throw new Error("locked save failed")
@@ -109,6 +115,8 @@ const invalid = repo.saveDraft(uriUser.id, "diary-uri-parking", {
   items: [{ id: "bad", componentId: "fire-detector", quantity: 1.256 }],
   checkedIds: [],
   notes: "",
+  siteManagerName: "",
+  siteManagerSignatureDataUrl: null,
 })
 assert.deepEqual(invalid, { ok: false, reason: "invalid" })
 

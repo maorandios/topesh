@@ -263,6 +263,31 @@ export function drawSectionTitle(ctx: PdfCtx, title: string) {
   ctx.y -= 14
 }
 
+export async function drawPngDataUrl(
+  ctx: PdfCtx,
+  dataUrl: string,
+  options?: { maxWidth?: number; maxHeight?: number }
+) {
+  const match = /^data:image\/png;base64,(.+)$/i.exec(dataUrl.trim())
+  if (!match?.[1]) return false
+  const bytes = Uint8Array.from(atob(match[1]), (char) => char.charCodeAt(0))
+  const image = await ctx.doc.embedPng(bytes)
+  const maxWidth = options?.maxWidth ?? 220
+  const maxHeight = options?.maxHeight ?? 80
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1)
+  const width = image.width * scale
+  const height = image.height * scale
+  ensureSpace(ctx, height + 8)
+  ctx.page.drawImage(image, {
+    x: PAGE.width - MARGIN - width,
+    y: ctx.y - height,
+    width,
+    height,
+  })
+  ctx.y -= height + 8
+  return true
+}
+
 export type TableColumn = { key: string; label: string; width: number }
 
 function tableTextBaseline(cursorY: number, rowHeight: number, size: number) {

@@ -104,7 +104,7 @@ try {
   await page.type("input[inputmode='decimal']", "4")
   await clickLabel("הוספה")
   await page.waitForFunction(() => document.body.innerText.includes("גלאי עשן"))
-  await clickLabel("עבודה בגובה")
+  await clickLabel("עבודת גובה")
   await page.type("textarea", "הערת מסך")
   await new Promise((resolve) => setTimeout(resolve, 500))
   await page.reload({ waitUntil: "networkidle2" })

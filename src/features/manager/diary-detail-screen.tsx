@@ -58,7 +58,11 @@ function DiaryDetail({
   const router = useRouter()
   const pending = diary.status === "pending"
   const leaders = db.users.filter((user) => user.role === "teamLeader" && (user.isActive || user.id === diary.teamLeaderId))
+  const technicians = db.technicians.filter(
+    (item) => item.isActive || item.id === diary.accompanyingTechnicianId
+  )
   const [leaderId, setLeaderId] = useState(diary.teamLeaderId)
+  const [technicianId, setTechnicianId] = useState(diary.accompanyingTechnicianId ?? "")
   const [workDate, setWorkDate] = useState(diary.workDate)
   const [companyId, setCompanyId] = useState(diary.companyId)
   const [customerId, setCustomerId] = useState(diary.customerId)
@@ -82,6 +86,7 @@ function DiaryDetail({
       subSiteName,
       projectName,
       workOrderNumber: workOrder,
+      accompanyingTechnicianId: technicianId || null,
     })
     setError(!result.ok)
   }
@@ -113,6 +118,20 @@ function DiaryDetail({
               <select className={fieldClass} value={leaderId} onChange={(event) => setLeaderId(event.target.value)}>
                 {leaders.map((leader) => (
                   <option key={leader.id} value={leader.id}>{leader.fullName}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={he.manager.diaries.technician}>
+              <select
+                className={fieldClass}
+                value={technicianId}
+                onChange={(event) => setTechnicianId(event.target.value)}
+              >
+                <option value="">{he.manager.diaries.technicianNone}</option>
+                {technicians.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.fullName} · {item.phone}
+                  </option>
                 ))}
               </select>
             </Field>
@@ -229,6 +248,22 @@ function Report({ diary }: { diary: NonNullable<ReturnType<typeof getManagerDiar
       <section className="flex flex-col gap-1">
         <h2 className="text-base font-medium">{he.leader.form.notesTitle}</h2>
         <p className="text-sm leading-6">{diary.notes.trim() || he.leader.form.readOnlyNotes}</p>
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-medium">{he.leader.form.signatureTitle}</h2>
+        {diary.siteManagerName?.trim() && diary.siteManagerSignatureDataUrl ? (
+          <>
+            <p className="text-sm leading-6 font-medium">{diary.siteManagerName.trim()}</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={diary.siteManagerSignatureDataUrl}
+              alt={he.leader.form.signatureTitle}
+              className="h-20 w-full max-w-sm rounded-xl border border-border bg-card object-contain p-2"
+            />
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">{he.leader.form.readOnlySignature}</p>
+        )}
       </section>
     </div>
   )

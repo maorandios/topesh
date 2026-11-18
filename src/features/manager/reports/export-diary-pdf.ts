@@ -6,6 +6,7 @@ import {
   drawDocumentHeader,
   drawFieldGrid,
   drawHairline,
+  drawPngDataUrl,
   drawRightText,
   drawSectionTitle,
   drawTable,
@@ -72,6 +73,14 @@ export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail, options?: Di
     { label: he.manager.diaries.project, value: diary.projectName || "—" },
     { label: he.manager.diaries.workOrder, value: diary.workOrderNumber },
     { label: he.manager.dashboard.columns.leader, value: diary.teamLeaderName },
+    {
+      label: he.manager.diaries.technician,
+      value: diary.accompanyingTechnicianName
+        ? `${diary.accompanyingTechnicianName}${
+            diary.accompanyingTechnicianPhone ? ` · ${diary.accompanyingTechnicianPhone}` : ""
+          }`
+        : he.manager.diaries.technicianNone,
+    },
   ]
 
   drawFieldGrid(ctx, details, { columns: 2 })
@@ -119,6 +128,21 @@ export async function buildDiaryPdfBytes(diary: ManagerDiaryDetail, options?: Di
     ctx.y,
     9
   )
+  ctx.y -= 18
+
+  const signatureName = diary.siteManagerName?.trim() ?? ""
+  const signatureDataUrl = diary.siteManagerSignatureDataUrl
+  drawSectionTitle(ctx, he.leader.form.signatureTitle)
+  if (signatureName && signatureDataUrl) {
+    ensureSpace(ctx, 16)
+    drawRightText(ctx, signatureName, PAGE.width - MARGIN, ctx.y, 9, true)
+    ctx.y -= 16
+    await drawPngDataUrl(ctx, signatureDataUrl, { maxWidth: 220, maxHeight: 90 })
+  } else {
+    ensureSpace(ctx, 16)
+    drawRightText(ctx, he.leader.form.readOnlySignature, PAGE.width - MARGIN, ctx.y, 9)
+    ctx.y -= 16
+  }
 
   return pdfBytes(ctx)
 }

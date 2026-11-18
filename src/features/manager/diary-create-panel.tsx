@@ -11,6 +11,7 @@ import {
   MapPin,
   UserRound,
   Users,
+  Wrench,
   type LucideIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -128,11 +129,13 @@ function CreateForm({
 }) {
   const notice = usePanelNotice()
   const leaders = db.users.filter((user) => user.role === "teamLeader" && user.isActive)
+  const technicians = db.technicians.filter((item) => item.isActive)
   const companies = db.companies.filter((item) => item.isActive)
   const customers = db.customers.filter((item) => item.isActive)
   const sites = db.sites.filter((item) => item.isActive)
   const orderRef = useRef<HTMLInputElement>(null)
   const [leaderId, setLeaderId] = useState(fixedTeamLeaderId ?? "")
+  const [technicianId, setTechnicianId] = useState("")
   const [workDate, setWorkDate] = useState(jerusalemToday())
   const [companyId, setCompanyId] = useState("")
   const [customerId, setCustomerId] = useState("")
@@ -180,6 +183,7 @@ function CreateForm({
       subSiteName,
       projectName,
       workOrderNumber: workOrder,
+      accompanyingTechnicianId: technicianId || null,
     })
     if (!result.ok || !("id" in result) || !result.id) {
       setShowMissing(true)
@@ -188,6 +192,7 @@ function CreateForm({
     }
     setShowMissing(false)
     if (!lockLeader) setLeaderId("")
+    setTechnicianId("")
     setCompanyId("")
     setCustomerId("")
     setSiteId("")
@@ -225,6 +230,22 @@ function CreateForm({
               />
             </EditorField>
           )}
+          <EditorField icon={Wrench} label={he.manager.diaries.technician}>
+            <CreateSelect
+              value={technicianId}
+              placeholder={he.manager.diaries.technicianNone}
+              options={[
+                { value: "", label: he.manager.diaries.technicianNone },
+                ...sortSelectOptions(
+                  technicians.map((item) => ({
+                    value: item.id,
+                    label: `${item.fullName} · ${item.phone}`,
+                  }))
+                ),
+              ]}
+              onValueChange={setTechnicianId}
+            />
+          </EditorField>
           <EditorField icon={CalendarDays} label={he.manager.diaries.date} missing={highlighted.has("workDate")}>
             <HebrewDatePicker
               value={workDate}

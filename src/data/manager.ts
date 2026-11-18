@@ -1,5 +1,13 @@
-import type { DiaryStatus, User } from "@/domain/types"
-import { findCompany, findComponent, findCustomer, findDomain, findSite, findUser } from "@/data/lookups"
+import type { DiaryStatus, Technician, User } from "@/domain/types"
+import {
+  findCompany,
+  findComponent,
+  findCustomer,
+  findDomain,
+  findSite,
+  findTechnician,
+  findUser,
+} from "@/data/lookups"
 import { applyDiaryDraft, type DiaryDraft, type LeaderDiaryItemView } from "@/data/repository"
 import type { MockDb } from "@/data/seed"
 import { addCalendarDays, jerusalemDay, jerusalemToday } from "@/lib/format"
@@ -13,6 +21,7 @@ export type DiaryAssignmentInput = {
   subSiteName: string
   projectName: string
   workOrderNumber: string
+  accompanyingTechnicianId: string | null
 }
 
 export type ManagerDiarySummary = DiaryAssignmentInput & {
@@ -23,6 +32,8 @@ export type ManagerDiarySummary = DiaryAssignmentInput & {
   customerId: string
   customerName: string
   siteName: string
+  accompanyingTechnicianName: string
+  accompanyingTechnicianPhone: string
   status: DiaryStatus
   createdAt: string
   submittedAt: string | null
@@ -32,6 +43,8 @@ export type ManagerDiarySummary = DiaryAssignmentInput & {
 
 export type ManagerDiaryDetail = ManagerDiarySummary & {
   notes: string
+  siteManagerName: string | null
+  siteManagerSignatureDataUrl: string | null
   workers: { id: string; fullName: string }[]
   items: LeaderDiaryItemView[]
   checkboxes: { checkboxId: string; label: string; checked: boolean }[]
@@ -72,6 +85,11 @@ export type SiteInput = {
   customerId: string
 }
 
+export type TechnicianInput = {
+  fullName: string
+  phone: string
+}
+
 export type DeleteBlockedReason =
   | "not-found"
   | "has-diaries"
@@ -99,6 +117,8 @@ export function getManagerDiary(db: MockDb, diaryId: string): ManagerDiaryDetail
   return {
     ...summary,
     notes: diary.notes,
+    siteManagerName: diary.siteManagerName ?? null,
+    siteManagerSignatureDataUrl: diary.siteManagerSignatureDataUrl ?? null,
     workers: db.workers
       .filter((worker) => worker.diaryId === diary.id)
       .map((worker) => ({ id: worker.id, fullName: worker.fullName })),
@@ -351,10 +371,13 @@ export function assignDiary(
           ...assignment,
           status: "pending",
           notes: "",
+          siteManagerName: null,
+          siteManagerSignatureDataUrl: null,
           createdAt,
           submittedAt: null,
           cancelledAt: null,
           duplicatedFromId: options?.duplicatedFromId ?? null,
+          signatureCaptureOnly: false,
         },
         ...db.diaries,
       ],
@@ -374,6 +397,7 @@ export function updateAssignment(
     siteId: current.siteId,
     companyId: current.companyId,
     customerId: current.customerId,
+    technicianId: current.accompanyingTechnicianId,
   })
   if (!assignment) return null
   return {
@@ -397,6 +421,7 @@ export function editDiary(
     siteId: current.siteId,
     companyId: current.companyId,
     customerId: current.customerId,
+    technicianId: current.accompanyingTechnicianId,
   })
   if (!assignment) return null
   const withAssignment: MockDb = {
@@ -484,7 +509,28 @@ export function markDiarySubmitted(
   return {
     ...db,
     diaries: db.diaries.map((diary) =>
-      diary.id === diaryId ? { ...diary, status: "submitted", submittedAt } : diary
+      diary.id === diaryId
+        ? { ...diary, status: "submitted", submittedAt, signatureCaptureOnly: false }
+        : diary
+    ),
+  }
+}
+
+/** Reopen a submitted diary so the team leader can add a site-manager signature only. */
+export function reopenDiaryForSignatureCapture(db: MockDb, diaryId: string): MockDb | null {
+  const current = db.diaries.find((diary) => diary.id === diaryId)
+  if (!current || current.status !== "submitted") return null
+  return {
+    ...db,
+    diaries: db.diaries.map((diary) =>
+      diary.id === diaryId
+        ? {
+            ...diary,
+            status: "pending",
+            submittedAt: null,
+            signatureCaptureOnly: true,
+          }
+        : diary
     ),
   }
 }
@@ -519,10 +565,61 @@ export function duplicateDiary(
       subSiteName: current.subSiteName,
       projectName: current.projectName,
       workOrderNumber: current.workOrderNumber,
+      accompanyingTechnicianId: current.accompanyingTechnicianId,
     },
     createdAt,
     { duplicatedFromId: current.id }
   )
+}
+
+export function saveTechnician(
+  db: MockDb,
+  id: string | null,
+  input: TechnicianInput
+): { db: MockDb; id: string } | null {
+  const fullName = cleanName(input.fullName)
+  const phone = input.phone.trim()
+  if (!fullName || phone.length < 7 || phone.length > 20) return null
+  if (!id) {
+    const nextId = crypto.randomUUID()
+    const technician: Technician = {
+      id: nextId,
+      fullName,
+      phone,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    }
+    return { id: nextId, db: { ...db, technicians: [...db.technicians, technician] } }
+  }
+  if (!db.technicians.some((item) => item.id === id)) return null
+  return {
+    id,
+    db: {
+      ...db,
+      technicians: db.technicians.map((item) =>
+        item.id === id ? { ...item, fullName, phone } : item
+      ),
+    },
+  }
+}
+
+export function deleteTechnician(
+  db: MockDb,
+  id: string
+): { db: MockDb } | { reason: DeleteBlockedReason } {
+  if (!db.technicians.some((item) => item.id === id)) return { reason: "not-found" }
+  if (db.diaries.some((diary) => diary.accompanyingTechnicianId === id)) {
+    return { reason: "has-diaries" }
+  }
+  return { db: { ...db, technicians: db.technicians.filter((item) => item.id !== id) } }
+}
+
+export function setTechnicianActive(db: MockDb, id: string, isActive: boolean): MockDb | null {
+  if (!db.technicians.some((item) => item.id === id)) return null
+  return {
+    ...db,
+    technicians: db.technicians.map((item) => (item.id === id ? { ...item, isActive } : item)),
+  }
 }
 
 export function saveCompany(db: MockDb, id: string | null, name: string): MockDb | null {
@@ -836,12 +933,15 @@ function cleanAssignment(
     siteId?: string
     companyId?: string
     customerId?: string
+    technicianId?: string | null
   } = {}
 ): DiaryAssignmentInput | null {
   const leader = findUser(db, input.teamLeaderId)
   const company = findCompany(db, input.companyId)
   const customer = findCustomer(db, input.customerId)
   const site = findSite(db, input.siteId)
+  const technicianId = input.accompanyingTechnicianId?.trim() || null
+  const technician = technicianId ? findTechnician(db, technicianId) : null
   const subSiteName = input.subSiteName.trim()
   const projectName = input.projectName.trim()
   const workOrderNumber = input.workOrderNumber.trim()
@@ -851,6 +951,10 @@ function cleanAssignment(
   if (!company.isActive && company.id !== allowInactive.companyId) return null
   if (!customer.isActive && customer.id !== allowInactive.customerId) return null
   if (!site.isActive && site.id !== allowInactive.siteId) return null
+  if (technicianId) {
+    if (!technician) return null
+    if (!technician.isActive && technician.id !== allowInactive.technicianId) return null
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.workDate)) return null
   if (!subSiteName || subSiteName.length > NAME_LIMIT) return null
   if (!projectName || projectName.length > NAME_LIMIT) return null
@@ -864,6 +968,7 @@ function cleanAssignment(
     subSiteName,
     projectName,
     workOrderNumber,
+    accompanyingTechnicianId: technician?.id ?? null,
   }
 }
 
@@ -876,7 +981,11 @@ function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySu
   const site = findSite(db, diary.siteId)
   const customer = findCustomer(db, diary.customerId)
   const company = findCompany(db, diary.companyId)
+  const technician = diary.accompanyingTechnicianId
+    ? findTechnician(db, diary.accompanyingTechnicianId)
+    : null
   if (!leader || !site || !customer || !company) return null
+  if (diary.accompanyingTechnicianId && !technician) return null
   return {
     id: diary.id,
     teamLeaderId: leader.id,
@@ -891,6 +1000,9 @@ function summarize(db: MockDb, diary: MockDb["diaries"][number]): ManagerDiarySu
     subSiteName: diary.subSiteName,
     projectName: diary.projectName,
     workOrderNumber: diary.workOrderNumber,
+    accompanyingTechnicianId: technician?.id ?? null,
+    accompanyingTechnicianName: technician?.fullName ?? "",
+    accompanyingTechnicianPhone: technician?.phone ?? "",
     status: diary.status,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,

@@ -40,21 +40,21 @@ type LegacyDb = {
 }
 
 export function parseDatabase(value: unknown): MockDb | null {
-  if (isV7(value)) {
+  if (isV10(value)) {
     return repairOrgLinks({
       ...value,
       companies: value.companies.map((item, index) => withCreatedAt(item, index)),
       customers: value.customers.map((item, index) => withCreatedAt(item, index)),
       sites: value.sites.map((item, index) => withCreatedAt(item, index)),
-      diaries: value.diaries.map((diary) => ({
-        ...diary,
-        cancelledAt:
-          diary.cancelledAt ??
-          (diary.status === "cancelled" ? diary.createdAt : null),
-        duplicatedFromId: diary.duplicatedFromId ?? null,
-      })),
+      technicians: value.technicians.map((item, index) => withTechnicianCreatedAt(item, index)),
+      diaries: value.diaries.map((diary) =>
+        withTechnicianId(withSignatureFields(diary), value.technicians)
+      ),
     })
   }
+  if (isV9(value)) return toV10(value)
+  if (isV8(value)) return toV10(toV9(value))
+  if (isV7(value)) return toV10(toV9(toV8(value)))
   // Refresh v5/v6 browser demos to the richer seed diaries.
   if (isV6(value) || isV5(value)) return createSeed()
   if (isV4(value) || isV3(value) || isV2(value)) return toV5(value)
@@ -88,23 +88,203 @@ function toV5(value: LegacyDb): MockDb {
   const siteCustomer = new Map(sites.map((item) => [item.id, item.customerId]))
   const customerCompany = new Map(customers.map((item) => [item.id, item.companyId]))
   const fallbackCompany = companies[0]?.id ?? catalogCompany.id
+  const technicians = seed.technicians
+  const fallbackTech = technicians[0]?.id ?? "tech-1"
   return {
-    version: 7,
+    version: 10,
     companies,
     customers,
     sites,
     subSites: value.subSites ?? seed.subSites,
     users: value.users ?? seed.users,
+    technicians,
     domains: value.domains ?? seed.domains,
     components: value.components ?? seed.components,
-    checkboxDefinitions: value.checkboxDefinitions ?? seed.checkboxDefinitions,
+    checkboxDefinitions: seed.checkboxDefinitions,
     diaries: value.diaries
       .map((diary) => migrateDiary(diary, names, siteCustomer, customerCompany, fallbackCompany))
-      .filter((diary): diary is WorkDiary => diary !== null),
+      .filter((diary): diary is WorkDiary => diary !== null)
+      .map((diary) => withTechnicianId(diary, technicians, fallbackTech)),
     workers: value.workers,
     items: value.items,
-    checks: value.checks,
+    checks: migrateChecks(value.checks),
   }
+}
+
+function toV8(value: {
+  version: number
+  companies: MockDb["companies"]
+  customers: MockDb["customers"]
+  sites: MockDb["sites"]
+  subSites: MockDb["subSites"]
+  users: MockDb["users"]
+  domains: MockDb["domains"]
+  components: MockDb["components"]
+  checkboxDefinitions: MockDb["checkboxDefinitions"]
+  diaries: MockDb["diaries"]
+  workers: MockDb["workers"]
+  items: MockDb["items"]
+  checks: MockDb["checks"]
+}): typeof value & { version: 8 } {
+  const seed = createSeed()
+  return {
+    ...value,
+    version: 8,
+    checkboxDefinitions: seed.checkboxDefinitions,
+    companies: value.companies.map((item, index) => withCreatedAt(item, index)),
+    customers: value.customers.map((item, index) => withCreatedAt(item, index)),
+    sites: value.sites.map((item, index) => withCreatedAt(item, index)),
+    diaries: value.diaries.map((diary) => ({
+      ...diary,
+      cancelledAt:
+        diary.cancelledAt ??
+        (diary.status === "cancelled" ? diary.createdAt : null),
+      duplicatedFromId: diary.duplicatedFromId ?? null,
+    })),
+    checks: migrateChecks(value.checks),
+  }
+}
+
+function toV9(value: {
+  version: number
+  companies: MockDb["companies"]
+  customers: MockDb["customers"]
+  sites: MockDb["sites"]
+  subSites: MockDb["subSites"]
+  users: MockDb["users"]
+  domains: MockDb["domains"]
+  components: MockDb["components"]
+  checkboxDefinitions: MockDb["checkboxDefinitions"]
+  diaries: Array<
+    MockDb["diaries"][number] | (Omit<MockDb["diaries"][number], "siteManagerName" | "siteManagerSignatureDataUrl"> & {
+      siteManagerName?: string | null
+      siteManagerSignatureDataUrl?: string | null
+    })
+  >
+  workers: MockDb["workers"]
+  items: MockDb["items"]
+  checks: MockDb["checks"]
+}): {
+  version: 9
+  companies: MockDb["companies"]
+  customers: MockDb["customers"]
+  sites: MockDb["sites"]
+  subSites: MockDb["subSites"]
+  users: MockDb["users"]
+  domains: MockDb["domains"]
+  components: MockDb["components"]
+  checkboxDefinitions: MockDb["checkboxDefinitions"]
+  diaries: MockDb["diaries"]
+  workers: MockDb["workers"]
+  items: MockDb["items"]
+  checks: MockDb["checks"]
+} {
+  return {
+    ...value,
+    version: 9,
+    companies: value.companies.map((item, index) => withCreatedAt(item, index)),
+    customers: value.customers.map((item, index) => withCreatedAt(item, index)),
+    sites: value.sites.map((item, index) => withCreatedAt(item, index)),
+    diaries: value.diaries.map((diary) => withSignatureFields(diary)),
+  }
+}
+
+function toV10(value: {
+  version: number
+  companies: MockDb["companies"]
+  customers: MockDb["customers"]
+  sites: MockDb["sites"]
+  subSites: MockDb["subSites"]
+  users: MockDb["users"]
+  technicians?: MockDb["technicians"]
+  domains: MockDb["domains"]
+  components: MockDb["components"]
+  checkboxDefinitions: MockDb["checkboxDefinitions"]
+  diaries: MockDb["diaries"]
+  workers: MockDb["workers"]
+  items: MockDb["items"]
+  checks: MockDb["checks"]
+}): MockDb {
+  const seed = createSeed()
+  const technicians = value.technicians?.length ? value.technicians : seed.technicians
+  return repairOrgLinks({
+    ...value,
+    version: 10,
+    companies: value.companies.map((item, index) => withCreatedAt(item, index)),
+    customers: value.customers.map((item, index) => withCreatedAt(item, index)),
+    sites: value.sites.map((item, index) => withCreatedAt(item, index)),
+    technicians: technicians.map((item, index) => withTechnicianCreatedAt(item, index)),
+    diaries: value.diaries.map((diary) =>
+      withTechnicianId(withSignatureFields(diary), technicians)
+    ),
+  })
+}
+
+function withTechnicianCreatedAt(
+  item: MockDb["technicians"][number],
+  index: number
+): MockDb["technicians"][number] {
+  if (typeof item.createdAt === "string" && item.createdAt) return item
+  const month = String((index % 12) + 1).padStart(2, "0")
+  const day = String((index % 27) + 1).padStart(2, "0")
+  return { ...item, createdAt: `2025-${month}-${day}T10:00:00.000Z` }
+}
+
+function withTechnicianId(
+  diary: WorkDiary,
+  technicians: MockDb["technicians"],
+  _fallbackId?: string
+): WorkDiary {
+  void _fallbackId
+  const current = (diary as WorkDiary & { accompanyingTechnicianId?: string | null })
+    .accompanyingTechnicianId
+  if (typeof current === "string" && technicians.some((item) => item.id === current)) {
+    return { ...diary, accompanyingTechnicianId: current }
+  }
+  return { ...diary, accompanyingTechnicianId: null }
+}
+
+function withSignatureFields(
+  diary: MockDb["diaries"][number] | (Record<string, unknown> & { status: WorkDiary["status"]; createdAt: string })
+): WorkDiary {
+  const row = diary as WorkDiary & {
+    siteManagerName?: string | null
+    siteManagerSignatureDataUrl?: string | null
+    cancelledAt?: string | null
+    duplicatedFromId?: string | null
+    signatureCaptureOnly?: boolean
+  }
+  return {
+    ...(row as WorkDiary),
+    siteManagerName: typeof row.siteManagerName === "string" ? row.siteManagerName : null,
+    siteManagerSignatureDataUrl:
+      typeof row.siteManagerSignatureDataUrl === "string" ? row.siteManagerSignatureDataUrl : null,
+    cancelledAt:
+      row.cancelledAt ?? (row.status === "cancelled" ? row.createdAt : null),
+    duplicatedFromId: row.duplicatedFromId ?? null,
+    signatureCaptureOnly: Boolean(row.signatureCaptureOnly),
+  }
+}
+
+const CHECK_ID_ALIASES: Record<string, string> = {
+  "check-hot": "check-lift-platform",
+  "check-confined": "check-heights",
+}
+
+function migrateChecks(checks: MockDb["checks"]): MockDb["checks"] {
+  const seed = createSeed()
+  const validIds = new Set(seed.checkboxDefinitions.map((item) => item.id))
+  const seen = new Set<string>()
+  const next: MockDb["checks"] = []
+  for (const check of checks) {
+    const checkboxId = CHECK_ID_ALIASES[check.checkboxId] ?? check.checkboxId
+    if (!validIds.has(checkboxId)) continue
+    const id = check.checkboxId === checkboxId ? check.id : `${check.diaryId}:${checkboxId}`
+    if (seen.has(id)) continue
+    seen.add(id)
+    next.push({ ...check, id, checkboxId })
+  }
+  return next
 }
 
 function withCreatedAt<T extends { id: string; name: string; isActive: boolean }>(
@@ -246,8 +426,11 @@ function migrateDiary(
     subSiteName,
     projectName: typeof diary.projectName === "string" ? diary.projectName.trim() : "",
     workOrderNumber: diary.workOrderNumber,
+    accompanyingTechnicianId: null,
     status: diary.status,
     notes: diary.notes,
+    siteManagerName: null,
+    siteManagerSignatureDataUrl: null,
     createdAt: diary.createdAt,
     submittedAt: diary.submittedAt,
     cancelledAt:
@@ -260,6 +443,7 @@ function migrateDiary(
       typeof (diary as unknown as { duplicatedFromId?: string | null }).duplicatedFromId === "string"
         ? (diary as unknown as { duplicatedFromId: string }).duplicatedFromId
         : null,
+    signatureCaptureOnly: false,
   }
 }
 
@@ -272,6 +456,7 @@ function isCurrentSeedShape(value: unknown): value is MockDb {
     record.sites?.every(isActiveSite) &&
     record.subSites?.every(hasIdName) &&
     record.users?.every(isUser) &&
+    (!record.technicians || record.technicians.every(isTechnician)) &&
     record.domains?.every(isNamedActive) &&
     record.components?.every(isComponent) &&
     record.checkboxDefinitions?.every(isCheckbox) &&
@@ -282,8 +467,25 @@ function isCurrentSeedShape(value: unknown): value is MockDb {
   )
 }
 
+function isV10(value: unknown): value is MockDb {
+  return (
+    isCurrentSeedShape(value) &&
+    (value as MockDb).version === 10 &&
+    Array.isArray((value as MockDb).technicians) &&
+    (value as MockDb).technicians.every(isTechnician)
+  )
+}
+
+function isV9(value: unknown): value is MockDb {
+  return isCurrentSeedShape(value) && (value as { version?: number }).version === 9
+}
+
+function isV8(value: unknown): value is MockDb {
+  return isCurrentSeedShape(value) && (value as { version?: number }).version === 8
+}
+
 function isV7(value: unknown): value is MockDb {
-  return isCurrentSeedShape(value) && (value as MockDb).version === 7
+  return isCurrentSeedShape(value) && (value as { version?: number }).version === 7
 }
 
 function isV6(value: unknown): boolean {
@@ -393,6 +595,18 @@ function isNamedActive(value: unknown): boolean {
   return typeof (value as { isActive?: unknown }).isActive === "boolean"
 }
 
+function isTechnician(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false
+  const item = value as MockDb["technicians"][number]
+  return (
+    typeof item.id === "string" &&
+    typeof item.fullName === "string" &&
+    typeof item.phone === "string" &&
+    typeof item.isActive === "boolean" &&
+    (item.createdAt === undefined || typeof item.createdAt === "string")
+  )
+}
+
 function isUser(value: unknown): boolean {
   if (!value || typeof value !== "object") return false
   const user = value as MockDb["users"][number]
@@ -444,8 +658,17 @@ function isDiary(value: unknown): boolean {
     typeof diary.subSiteName === "string" &&
     typeof diary.projectName === "string" &&
     typeof diary.workOrderNumber === "string" &&
+    (diary.accompanyingTechnicianId === undefined ||
+      diary.accompanyingTechnicianId === null ||
+      typeof diary.accompanyingTechnicianId === "string") &&
     (diary.status === "pending" || diary.status === "submitted" || diary.status === "cancelled") &&
     typeof diary.notes === "string" &&
+    (diary.siteManagerName === null ||
+      diary.siteManagerName === undefined ||
+      typeof diary.siteManagerName === "string") &&
+    (diary.siteManagerSignatureDataUrl === null ||
+      diary.siteManagerSignatureDataUrl === undefined ||
+      typeof diary.siteManagerSignatureDataUrl === "string") &&
     typeof diary.createdAt === "string" &&
     (diary.submittedAt === null || typeof diary.submittedAt === "string") &&
     (diary.cancelledAt === null ||
@@ -453,7 +676,8 @@ function isDiary(value: unknown): boolean {
       typeof diary.cancelledAt === "string") &&
     (diary.duplicatedFromId === null ||
       diary.duplicatedFromId === undefined ||
-      typeof diary.duplicatedFromId === "string")
+      typeof diary.duplicatedFromId === "string") &&
+    (diary.signatureCaptureOnly === undefined || typeof diary.signatureCaptureOnly === "boolean")
   )
 }
 

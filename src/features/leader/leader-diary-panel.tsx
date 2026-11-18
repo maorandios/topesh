@@ -9,14 +9,17 @@ import {
   Layers3,
   MapPin,
   MessageSquareText,
+  PenLine,
   Plus,
   Users,
+  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SignaturePad } from "@/components/signature-pad"
 import {
   Drawer,
   DrawerContent,
@@ -164,6 +167,7 @@ function DiaryEditor({
   const [reviewOpen, setReviewOpen] = useState(false)
   const [workerSheetOpen, setWorkerSheetOpen] = useState(false)
   const [itemSheetOpen, setItemSheetOpen] = useState(false)
+  const [signatureSheetOpen, setSignatureSheetOpen] = useState(false)
   const [submitError, setSubmitError] = useState(false)
   const draftRef = useRef(draft)
   const dirtyRef = useRef(false)
@@ -212,7 +216,11 @@ function DiaryEditor({
     onSubmitted()
   }
 
-  const overlayOpen = workerSheetOpen || itemSheetOpen || reviewOpen
+  const overlayOpen = workerSheetOpen || itemSheetOpen || signatureSheetOpen || reviewOpen
+  const signatureOnly = detail.signatureCaptureOnly
+  const checkedOptions = detail.checkboxes.filter((option) =>
+    draft.checkedIds.includes(option.checkboxId)
+  )
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -226,30 +234,133 @@ function DiaryEditor({
         }}
       >
         <div className="flex flex-col gap-6 text-sm">
+          {signatureOnly ? (
+            <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-center text-sm leading-6 text-amber-700 dark:text-amber-400">
+              <p>{he.leader.form.signatureOnlyBanner}</p>
+            </div>
+          ) : null}
           <AssignmentFacts detail={detail} />
           <SectionDivider />
-          <WorkerFields
-            workers={draft.workers}
-            sheetOpen={workerSheetOpen}
-            onSheetOpenChange={setWorkerSheetOpen}
-            onChange={(workers) => updateDraft({ ...draft, workers }, true)}
-          />
+          {signatureOnly ? (
+            <>
+              <SectionShell icon={Users} title={he.leader.form.workersTitle}>
+                {draft.workers.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyWorkers}</p>
+                ) : (
+                  <p className="text-sm leading-5">
+                    {draft.workers.map((worker, index) => (
+                      <span key={worker.id}>
+                        {index > 0 ? (
+                          <span className="mx-1.5 text-muted-foreground">·</span>
+                        ) : null}
+                        {worker.fullName}
+                      </span>
+                    ))}
+                  </p>
+                )}
+              </SectionShell>
+              <SectionDivider />
+              <SectionShell icon={Cable} title={he.leader.form.workTitle}>
+                {draft.items.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyItems}</p>
+                ) : (
+                  <div className="overflow-hidden rounded-sm border border-border/60">
+                    <table className="w-full table-fixed border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/40 text-muted-foreground">
+                          <th className="px-2 py-1.5 text-start font-medium">
+                            {he.leader.form.system}
+                          </th>
+                          <th className="px-2 py-1.5 text-start font-medium">
+                            {he.leader.form.component}
+                          </th>
+                          <th className="px-2 py-1.5 text-start font-medium">
+                            {he.leader.form.quantity}
+                          </th>
+                          <th className="px-2 py-1.5 text-start font-medium">
+                            {he.leader.form.units}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {draft.items.map((item) => {
+                          const view = detail.items.find((row) => row.id === item.id)
+                          return (
+                            <tr key={item.id} className="border-b border-border/40 last:border-b-0">
+                              <td className="truncate px-2 py-2">{view?.domainName ?? "—"}</td>
+                              <td className="truncate px-2 py-2">{view?.componentName ?? "—"}</td>
+                              <td className="truncate px-2 py-2 tabular-nums">
+                                {formatQuantity(item.quantity)}
+                              </td>
+                              <td className="truncate px-2 py-2">{view?.unit ?? "—"}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </SectionShell>
+              <SectionDivider />
+              <SectionShell icon={Info} title={he.leader.form.checksTitle}>
+                {checkedOptions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">{he.leader.form.readOnlyChecks}</p>
+                ) : (
+                  <p className="text-sm leading-5">
+                    {checkedOptions.map((option, index) => (
+                      <span key={option.checkboxId}>
+                        {index > 0 ? (
+                          <span className="mx-1.5 text-muted-foreground">·</span>
+                        ) : null}
+                        {option.label}
+                      </span>
+                    ))}
+                  </p>
+                )}
+              </SectionShell>
+              <SectionDivider />
+              <SectionShell icon={MessageSquareText} title={he.leader.form.notesTitle}>
+                <p className="text-sm leading-5">
+                  {draft.notes.trim() || he.leader.form.readOnlyNotes}
+                </p>
+              </SectionShell>
+            </>
+          ) : (
+            <>
+              <WorkerFields
+                workers={draft.workers}
+                sheetOpen={workerSheetOpen}
+                onSheetOpenChange={setWorkerSheetOpen}
+                onChange={(workers) => updateDraft({ ...draft, workers }, true)}
+              />
+              <SectionDivider />
+              <ComponentList
+                items={draft.items}
+                onChange={(items) => updateDraft({ ...draft, items }, true)}
+                onOpenChange={setItemSheetOpen}
+              />
+              <SectionDivider />
+              <CheckboxFields
+                options={detail.checkboxes}
+                checkedIds={draft.checkedIds}
+                onChange={(checkedIds) => updateDraft({ ...draft, checkedIds }, true)}
+              />
+              <SectionDivider />
+              <NotesSection
+                notes={draft.notes}
+                onChange={(notes) => updateDraft({ ...draft, notes })}
+              />
+            </>
+          )}
           <SectionDivider />
-          <ComponentList
-            items={draft.items}
-            onChange={(items) => updateDraft({ ...draft, items }, true)}
-            onOpenChange={setItemSheetOpen}
-          />
-          <SectionDivider />
-          <CheckboxFields
-            options={detail.checkboxes}
-            checkedIds={draft.checkedIds}
-            onChange={(checkedIds) => updateDraft({ ...draft, checkedIds }, true)}
-          />
-          <SectionDivider />
-          <NotesSection
-            notes={draft.notes}
-            onChange={(notes) => updateDraft({ ...draft, notes })}
+          <SignatureSection
+            name={draft.siteManagerName}
+            signatureDataUrl={draft.siteManagerSignatureDataUrl}
+            sheetOpen={signatureSheetOpen}
+            onSheetOpenChange={setSignatureSheetOpen}
+            onChange={(siteManagerName, siteManagerSignatureDataUrl) =>
+              updateDraft({ ...draft, siteManagerName, siteManagerSignatureDataUrl }, true)
+            }
           />
         </div>
       </div>
@@ -275,6 +386,13 @@ function DiaryEditor({
 }
 
 function AssignmentFacts({ detail }: { detail: LeaderDiaryDetail }) {
+  const technician = detail.accompanyingTechnicianName.trim()
+    ? `${detail.accompanyingTechnicianName}${
+        detail.accompanyingTechnicianPhone.trim()
+          ? ` · ${detail.accompanyingTechnicianPhone}`
+          : ""
+      }`
+    : he.manager.diaries.technicianNone
   return (
     <ul className="flex flex-col gap-2.5">
       <FactRow icon={MapPin} label={he.leader.form.site} value={detail.siteName || "—"} />
@@ -284,6 +402,7 @@ function AssignmentFacts({ detail }: { detail: LeaderDiaryDetail }) {
         label={he.manager.diaries.project}
         value={detail.projectName || "—"}
       />
+      <FactRow icon={Wrench} label={he.manager.diaries.technician} value={technician} />
     </ul>
   )
 }
@@ -322,14 +441,12 @@ function WorkerFields({
   onChange: (workers: DiaryDraft["workers"]) => void
 }) {
   const [name, setName] = useState("")
-  const inputRef = useRef<HTMLInputElement>(null)
   const named = workers.map((worker) => worker.fullName.trim()).filter(Boolean)
 
-  useEffect(() => {
-    if (!sheetOpen) return
+  const openSheet = () => {
     setName("")
-    window.setTimeout(() => inputRef.current?.focus(), 50)
-  }, [sheetOpen])
+    onSheetOpenChange(true)
+  }
 
   const saveWorker = () => {
     const fullName = name.trim()
@@ -348,7 +465,7 @@ function WorkerFields({
             type="button"
             className={sectionAddClass}
             aria-label={he.leader.form.addWorker}
-            onClick={() => onSheetOpenChange(true)}
+            onClick={openSheet}
           >
             <Plus className="size-3.5" aria-hidden />
           </button>
@@ -403,7 +520,7 @@ function WorkerFields({
               {he.leader.form.workerName}
             </span>
             <Input
-              ref={inputRef}
+              autoFocus={sheetOpen}
               value={name}
               maxLength={80}
               placeholder={he.leader.form.workerName}
@@ -829,6 +946,152 @@ function NotesSection({
   )
 }
 
+function SignatureSection({
+  name,
+  signatureDataUrl,
+  sheetOpen,
+  onSheetOpenChange,
+  onChange,
+}: {
+  name: string
+  signatureDataUrl: string | null
+  sheetOpen: boolean
+  onSheetOpenChange: (open: boolean) => void
+  onChange: (name: string, signatureDataUrl: string | null) => void
+}) {
+  const [draftName, setDraftName] = useState(name)
+  const [draftSignature, setDraftSignature] = useState<string | null>(signatureDataUrl)
+  const [padKey, setPadKey] = useState(0)
+  const hasSignature = Boolean(name.trim() && signatureDataUrl)
+
+  const openSheet = () => {
+    setDraftName(name)
+    setDraftSignature(signatureDataUrl)
+    setPadKey((value) => value + 1)
+    onSheetOpenChange(true)
+  }
+
+  const canSave = Boolean(draftName.trim() && draftSignature)
+
+  return (
+    <>
+      <SectionShell
+        icon={PenLine}
+        title={he.leader.form.signatureTitle}
+        action={
+          <button
+            type="button"
+            className={sectionAddClass}
+            aria-label={
+              hasSignature ? he.leader.form.signatureEdit : he.leader.form.signatureAdd
+            }
+            onClick={openSheet}
+          >
+            <Plus className="size-3.5" aria-hidden />
+          </button>
+        }
+      >
+        <SignaturePreview
+          name={name}
+          signatureDataUrl={signatureDataUrl}
+          emptyLabel={he.leader.form.readOnlySignature}
+        />
+      </SectionShell>
+
+      <MobileFilterPicker
+        open={sheetOpen}
+        title={he.leader.form.signatureTitle}
+        onClose={() => onSheetOpenChange(false)}
+        footer={
+          <div className="flex shrink-0 flex-col gap-2 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <Button
+              type="button"
+              size="touch"
+              className="w-full"
+              disabled={!canSave}
+              onClick={() => {
+                if (!canSave || !draftSignature) return
+                onChange(draftName.trim(), draftSignature)
+                onSheetOpenChange(false)
+              }}
+            >
+              {he.leader.form.signatureSave}
+            </Button>
+            {hasSignature ? (
+              <Button
+                type="button"
+                size="touch"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  onChange("", null)
+                  onSheetOpenChange(false)
+                }}
+              >
+                {he.leader.form.signatureClearAll}
+              </Button>
+            ) : null}
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-4 px-4 py-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              {he.leader.form.signatureNameLabel}
+            </span>
+            <Input
+              autoFocus
+              value={draftName}
+              maxLength={80}
+              placeholder={he.leader.form.signatureNamePlaceholder}
+              className={fieldClass}
+              onChange={(event) => setDraftName(event.target.value)}
+            />
+          </label>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              {he.leader.form.signaturePadLabel}
+            </span>
+            <SignaturePad
+              key={padKey}
+              ariaLabel={he.leader.form.signaturePadLabel}
+              clearLabel={he.leader.form.signatureClearPad}
+              initialDataUrl={draftSignature}
+              onChange={setDraftSignature}
+            />
+          </div>
+        </div>
+      </MobileFilterPicker>
+    </>
+  )
+}
+
+function SignaturePreview({
+  name,
+  signatureDataUrl,
+  emptyLabel,
+}: {
+  name: string
+  signatureDataUrl: string | null
+  emptyLabel: string
+}) {
+  const trimmed = name.trim()
+  if (!trimmed || !signatureDataUrl) {
+    return <p className="text-xs text-muted-foreground">{emptyLabel}</p>
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm leading-5 font-medium">{trimmed}</p>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={signatureDataUrl}
+        alt={he.leader.form.signatureTitle}
+        className="h-16 w-full max-w-xs rounded-md border border-border/60 bg-card object-contain"
+      />
+    </div>
+  )
+}
+
 function ReviewSheet({
   open,
   detail,
@@ -865,6 +1128,8 @@ function ReviewSheet({
     draft.checkedIds.includes(option.checkboxId)
   )
   const notes = draft.notes.trim()
+  const signatureName = draft.siteManagerName.trim()
+  const signatureDataUrl = draft.siteManagerSignatureDataUrl
 
   return (
     <MobileFilterPicker
@@ -1000,6 +1265,16 @@ function ReviewSheet({
         <SectionShell icon={MessageSquareText} title={he.leader.form.notesTitle}>
           <p className="text-sm leading-5">{notes || he.leader.review.noNotes}</p>
         </SectionShell>
+
+        <SectionDivider />
+
+        <SectionShell icon={PenLine} title={he.leader.form.signatureTitle}>
+          <SignaturePreview
+            name={signatureName}
+            signatureDataUrl={signatureDataUrl}
+            emptyLabel={he.leader.review.noSignature}
+          />
+        </SectionShell>
       </div>
     </MobileFilterPicker>
   )
@@ -1110,6 +1385,14 @@ function ReadOnlyDiary({ detail }: { detail: LeaderDiaryDetail }) {
               {detail.notes.trim() || he.leader.form.readOnlyNotes}
             </p>
           </SectionShell>
+          <SectionDivider />
+          <SectionShell icon={PenLine} title={he.leader.form.signatureTitle}>
+            <SignaturePreview
+              name={detail.siteManagerName ?? ""}
+              signatureDataUrl={detail.siteManagerSignatureDataUrl}
+              emptyLabel={he.leader.form.readOnlySignature}
+            />
+          </SectionShell>
         </div>
       </div>
     </div>
@@ -1171,6 +1454,8 @@ function draftFromDetail(detail: LeaderDiaryDetail): DiaryDraft {
       .filter((option) => option.checked)
       .map((option) => option.checkboxId),
     notes: detail.notes,
+    siteManagerName: detail.siteManagerName ?? "",
+    siteManagerSignatureDataUrl: detail.siteManagerSignatureDataUrl ?? null,
   }
 }
 

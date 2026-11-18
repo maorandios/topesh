@@ -6,6 +6,7 @@ import type {
   Domain,
   Site,
   SubSite,
+  Technician,
   User,
 } from "@/domain/types"
 
@@ -123,6 +124,30 @@ export const managers: User[] = [
 ]
 
 export const users: User[] = [...managers, ...teamLeaders]
+
+export const technicians: Technician[] = [
+  {
+    id: "tech-1",
+    fullName: "יוסי אברהם",
+    phone: "050-1112233",
+    isActive: true,
+    createdAt: "2025-01-10T10:00:00.000Z",
+  },
+  {
+    id: "tech-2",
+    fullName: "ליאור מזרחי",
+    phone: "052-4455667",
+    isActive: true,
+    createdAt: "2025-02-12T10:00:00.000Z",
+  },
+  {
+    id: "tech-3",
+    fullName: "נועה שמש",
+    phone: "054-7788990",
+    isActive: true,
+    createdAt: "2025-03-15T10:00:00.000Z",
+  },
+]
 
 const customerNames = [
   "קניון הדר",
@@ -254,10 +279,11 @@ export const components: ComponentItem[] = [
 ]
 
 export const checkboxDefinitions: CheckboxDefinition[] = [
-  { id: "check-height", label: "עבודה בגובה", sortOrder: 1, isActive: true },
-  { id: "check-night", label: "עבודת לילה", sortOrder: 2, isActive: true },
-  { id: "check-hot", label: "עבודה חמה", sortOrder: 3, isActive: true },
-  { id: "check-confined", label: "חלל מוקף", sortOrder: 4, isActive: true },
+  { id: "check-lift-platform", label: "עבודה על במת הרמה", sortOrder: 1, isActive: true },
+  { id: "check-height", label: "עבודת גובה", sortOrder: 2, isActive: true },
+  { id: "check-night", label: "עבודת לילה", sortOrder: 3, isActive: true },
+  { id: "check-irregular-hours", label: "עבודה בשעות חריגות", sortOrder: 4, isActive: true },
+  { id: "check-heights", label: "עבודה בגובים", sortOrder: 5, isActive: true },
 ]
 
 export function activeDomains() {

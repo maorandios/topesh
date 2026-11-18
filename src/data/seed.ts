@@ -9,6 +9,7 @@ import type {
   Domain,
   Site,
   SubSite,
+  Technician,
   User,
   WorkDiary,
 } from "@/domain/types"
@@ -22,16 +23,18 @@ import {
   sites,
   subSites,
   teamLeaders,
+  technicians,
   users,
 } from "@/data/catalog"
 
 export type MockDb = {
-  version: 7
+  version: 10
   companies: Company[]
   customers: Customer[]
   sites: Site[]
   subSites: SubSite[]
   users: User[]
+  technicians: Technician[]
   domains: Domain[]
   components: ComponentItem[]
   checkboxDefinitions: CheckboxDefinition[]
@@ -134,13 +137,17 @@ function buildDemoBundle() {
       siteId: "site-hadar",
       subSiteName: "קומה 1",
       projectName: "שדרוג גילוי אש",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-1001",
       status: "pending",
       notes: "",
       createdAt: "2026-10-27T08:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-uri-parking",
@@ -151,13 +158,17 @@ function buildDemoBundle() {
       siteId: "site-hadar",
       subSiteName: "חניון",
       projectName: "התקנת מצלמות",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-1002",
       status: "pending",
       notes: "",
       createdAt: "2026-10-27T08:05:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-uri-pumps",
@@ -168,13 +179,17 @@ function buildDemoBundle() {
       siteId: "site-sharon",
       subSiteName: "חדר משאבות",
       projectName: "תחזוקה שוטפת",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-1004",
       status: "pending",
       notes: "",
       createdAt: "2026-10-25T08:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-uri-building",
@@ -185,13 +200,17 @@ function buildDemoBundle() {
       siteId: "site-sharon",
       subSiteName: "בניין א",
       projectName: "התקנת גלאים",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-1003",
       status: "submitted",
       notes: "הותקנו גלאים במסדרון המזרחי.",
       createdAt: "2026-10-20T08:00:00.000Z",
       submittedAt: "2026-10-21T14:00:00.000Z",
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-noa-pumps",
@@ -202,13 +221,17 @@ function buildDemoBundle() {
       siteId: "site-sharon",
       subSiteName: "חדר משאבות",
       projectName: "בדיקות תקופתיות",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-2001",
       status: "pending",
       notes: "",
       createdAt: "2026-10-27T09:00:00.000Z",
       submittedAt: null,
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-noa-parking",
@@ -219,13 +242,17 @@ function buildDemoBundle() {
       siteId: "site-hadar",
       subSiteName: "חניון",
       projectName: "מערכת כריזה",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-2002",
       status: "submitted",
       notes: "כריזה בחניון.",
       createdAt: "2026-10-14T09:00:00.000Z",
       submittedAt: "2026-10-15T13:30:00.000Z",
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
   ]
 
@@ -239,13 +266,17 @@ function buildDemoBundle() {
       siteId: "site-hadar",
       subSiteName: "קומה 12",
       projectName: "שדרוג מערכות משולב",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-4101",
       status: "submitted",
       notes: "התקנה מלאה במסדרון וחדרי שרתים.",
       createdAt: "2026-10-29T07:30:00.000Z",
       submittedAt: "2026-10-30T15:40:00.000Z",
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-rich-campus",
@@ -256,13 +287,17 @@ function buildDemoBundle() {
       siteId: "site-sharon",
       subSiteName: "בניין מעבדות",
       projectName: "פריסת אבטחה ותקשורת",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-4102",
       status: "submitted",
       notes: "בוצעו התקנות במקביל לשתי קומות.",
       createdAt: "2026-10-28T08:10:00.000Z",
       submittedAt: "2026-10-29T16:20:00.000Z",
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
     {
       id: "diary-rich-mall",
@@ -273,13 +308,17 @@ function buildDemoBundle() {
       siteId: "site-3",
       subSiteName: "אולם אירועים",
       projectName: "התקנת כריזה ומצלמות",
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: "WO-4103",
       status: "submitted",
       notes: "נדרשה עבודה בגובה באולם הראשי.",
       createdAt: "2026-10-26T09:00:00.000Z",
       submittedAt: "2026-10-27T14:55:00.000Z",
       cancelledAt: null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     },
   ]
 
@@ -331,9 +370,9 @@ function buildDemoBundle() {
       checked: true,
     },
     {
-      id: "diary-rich-azrieli:check-hot",
+      id: "diary-rich-azrieli:check-lift-platform",
       diaryId: "diary-rich-azrieli",
-      checkboxId: "check-hot",
+      checkboxId: "check-lift-platform",
       checked: true,
     },
     {
@@ -349,9 +388,9 @@ function buildDemoBundle() {
       checked: true,
     },
     {
-      id: "diary-rich-mall:check-confined",
+      id: "diary-rich-mall:check-heights",
       diaryId: "diary-rich-mall",
-      checkboxId: "check-confined",
+      checkboxId: "check-heights",
       checked: true,
     },
   ]
@@ -379,13 +418,17 @@ function buildDemoBundle() {
       siteId: site.id,
       subSiteName: subSiteNames[index % subSiteNames.length]!,
       projectName: projectNames[index % projectNames.length]!,
+      accompanyingTechnicianId: "tech-1",
       workOrderNumber: `WO-${3000 + index}`,
       status,
       notes: status === "submitted" ? "בוצע לפי תוכנית העבודה." : "",
       createdAt: `${createdDay}T08:${String(index % 60).padStart(2, "0")}:00.000Z`,
       submittedAt: status === "submitted" ? `${workDate}T16:00:00.000Z` : null,
       cancelledAt: status === "cancelled" ? `${workDate}T11:00:00.000Z` : null,
+      siteManagerName: null,
+      siteManagerSignatureDataUrl: null,
       duplicatedFromId: null,
+      signatureCaptureOnly: false,
     })
 
     if (status === "submitted") {
@@ -431,12 +474,13 @@ function buildDemoBundle() {
 export function createSeed(): MockDb {
   const { diaries, workers, items, checks } = buildDemoBundle()
   return {
-    version: 7,
+    version: 10,
     companies,
     customers,
     sites,
     subSites,
     users,
+    technicians,
     domains,
     components,
     checkboxDefinitions,
