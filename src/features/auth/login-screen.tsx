@@ -53,7 +53,11 @@ export function LoginScreen() {
   const [identity, setIdentity] = useState("")
   const [otp, setOtp] = useState<string[]>(() => Array.from({ length: OTP_LENGTH }, () => ""))
   const [error, setError] = useState<string | null>(null)
-  const year = new Date().getFullYear()
+  const [year, setYear] = useState<number | null>(null)
+
+  useEffect(() => {
+    setYear(new Date().getFullYear())
+  }, [])
 
   const goMain = () => {
     setStep("main")
@@ -487,13 +491,13 @@ function OtpInputs({
   )
 }
 
-function LoginFooter({ year, onDev }: { year: number; onDev: () => void }) {
+function LoginFooter({ year, onDev }: { year: number | null; onDev: () => void }) {
   return (
     <footer className="mt-auto flex flex-col items-center gap-1.5 pt-6 pb-1 text-center">
       <div className="h-px w-16 bg-gradient-to-l from-transparent via-border to-transparent" />
       <p className="text-xs font-medium text-muted-foreground">{he.auth.footer}</p>
       <p className="text-[11px] text-muted-foreground/80">
-        © {year} · {he.auth.footerRights}
+        {year != null ? `© ${year} · ${he.auth.footerRights}` : he.auth.footerRights}
       </p>
       {devRoleSwitcherEnabled ? (
         <button

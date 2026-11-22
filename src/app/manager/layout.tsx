@@ -7,6 +7,15 @@ import { SideNav, SideNavFallback } from "@/components/shell/side-nav"
 import { RoleGate } from "@/features/dev-role/role-gate"
 import { ManagerCreateProvider } from "@/features/manager/manager-create-provider"
 
+function BottomNavFallback() {
+  return (
+    <div
+      className="app-chrome fixed inset-x-0 bottom-0 z-40 h-[calc(3.5rem+env(safe-area-inset-bottom))] border-t border-border lg:hidden"
+      aria-hidden
+    />
+  )
+}
+
 export default function ManagerLayout({
   children,
 }: {
@@ -27,7 +36,9 @@ export default function ManagerLayout({
               </main>
             </PullToRefresh>
           </div>
-          <BottomNav variant="manager" />
+          <Suspense fallback={<BottomNavFallback />}>
+            <BottomNav variant="manager" />
+          </Suspense>
         </div>
       </ManagerCreateProvider>
     </RoleGate>

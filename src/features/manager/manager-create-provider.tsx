@@ -10,7 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useManagerDb } from "@/data/browser-store"
 import { DiaryCreatePanel } from "@/features/manager/diary-create-panel"
 
@@ -21,6 +21,14 @@ type ManagerCreateContextValue = {
 }
 
 const ManagerCreateContext = createContext<ManagerCreateContextValue | null>(null)
+
+function clearCreateFromUrl(router: ReturnType<typeof useRouter>) {
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has("create")) return
+  url.searchParams.delete("create")
+  const next = `${url.pathname}${url.search}${url.hash}`
+  router.replace(next, { scroll: false })
+}
 
 /** Keeps useSearchParams inside Suspense so layout chrome never unmounts. */
 function CreateQueryBridge({
@@ -43,25 +51,24 @@ export function ManagerCreateProvider({ children }: { children: ReactNode }) {
   const [urlCreate, setUrlCreate] = useState(false)
   const query = useManagerDb()
   const router = useRouter()
-  const pathname = usePathname()
   const open = userOpen || urlCreate
 
   const openCreate = useCallback(() => setUserOpen(true), [])
   const closeCreate = useCallback(() => {
     setUserOpen(false)
     setUrlCreate(false)
-    router.replace(pathname, { scroll: false })
-  }, [pathname, router])
+    clearCreateFromUrl(router)
+  }, [router])
 
   const onOpenChange = useCallback(
     (next: boolean) => {
       setUserOpen(next)
       if (!next) {
         setUrlCreate(false)
-        router.replace(pathname, { scroll: false })
+        clearCreateFromUrl(router)
       }
     },
-    [pathname, router]
+    [router]
   )
 
   const value = useMemo(
