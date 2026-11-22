@@ -68,7 +68,7 @@ import { BidiText } from "@/lib/bidi"
 import { cn } from "cn"
 
 type DatePreset = "today" | "week" | "month"
-type QuickFilter = DatePreset | "pending" | "submitted" | "cancelled"
+type QuickFilter = "all" | DatePreset | "pending" | "submitted" | "cancelled"
 
 type AdvancedFilters = {
   workDate: string
@@ -105,7 +105,7 @@ function toOrgSearchFilters(filters: AdvancedFilters): WorkDiarySearchFilters {
 export function DashboardScreen() {
   const query = useManagerDb()
   const { openCreate } = useManagerCreate()
-  const [quickFilter, setQuickFilter] = useState<QuickFilter | null>(null)
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
   const [openId, setOpenId] = useState<string | null>(null)
   const [search, setSearch] = useState("")
   const [workDate, setWorkDate] = useState("")
@@ -168,7 +168,7 @@ export function DashboardScreen() {
   })
   const filterKey = [
     search,
-    quickFilter ?? "",
+    quickFilter,
     workDate,
     companyIds.join(","),
     customerIds.join(","),
@@ -199,6 +199,7 @@ export function DashboardScreen() {
       quickFilter === "cancelled"
   )
   const desktopQuickFilterOptions: Array<[QuickFilter, string]> = [
+    ["all", he.manager.reports.all],
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
     ["month", he.manager.dashboard.quick.month],
@@ -207,6 +208,7 @@ export function DashboardScreen() {
     ["cancelled", he.manager.dashboard.quick.cancelled],
   ]
   const mobileQuickFilterOptions: Array<[QuickFilter, string]> = [
+    ["all", he.manager.reports.all],
     ["today", he.manager.dashboard.quick.today],
     ["week", he.manager.dashboard.quick.week],
     ["pending", he.manager.dashboard.metrics.pending.label],
@@ -223,23 +225,11 @@ export function DashboardScreen() {
     setCustomerIds(next.customerIds)
     setSiteIds(next.siteIds)
     setTeamLeaderIds(next.teamLeaderIds)
-    if (patch.workDate) setQuickFilter(null)
+    if (patch.workDate) setQuickFilter("all")
   }
 
   const patchDraft = (patch: Partial<AdvancedFilters>) => {
     setDraftFilters((prev) => normalizeCascade(db, { ...prev, ...patch }))
-  }
-
-  const resetFilters = () => {
-    setQuickFilter(null)
-    setSearch("")
-    setWorkDate("")
-    setCompanyIds([])
-    setCustomerIds([])
-    setSiteIds([])
-    setTeamLeaderIds([])
-    setDraftFilters(emptyAdvanced())
-    setLoaded({ key: "", extra: 0 })
   }
 
   const openMobileFilters = () => {
@@ -257,15 +247,15 @@ export function DashboardScreen() {
     setQuickFilter((prev) => {
       if (next.period === "month") return "month"
       if (next.status === "cancelled") return "cancelled"
-      if (next.workDate) return null
-      if (prev === "month" || prev === "cancelled") return null
+      if (next.workDate) return "all"
+      if (prev === "month" || prev === "cancelled") return "all"
       return prev
     })
     setMobileFiltersOpen(false)
   }
 
   const clearSheetFilters = () => {
-    if (quickFilter === "month" || quickFilter === "cancelled") setQuickFilter(null)
+    if (quickFilter === "month" || quickFilter === "cancelled") setQuickFilter("all")
     setWorkDate("")
     setCompanyIds([])
     setCustomerIds([])
@@ -299,12 +289,6 @@ export function DashboardScreen() {
           }}
         />
       ))}
-      <FilterSegment
-        pressed={false}
-        label={he.manager.dashboard.reset}
-        size={size}
-        onClick={resetFilters}
-      />
     </div>
   )
   const desktopQuickFilters = renderQuickFilters(desktopQuickFilterOptions)

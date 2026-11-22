@@ -58,6 +58,15 @@ export async function buildDiaryExcelBuffer(diary: ManagerDiaryDetail) {
   addKeyValue(sheet, he.manager.dashboard.columns.subSite, diary.subSiteName || "—")
   addKeyValue(sheet, he.manager.dashboard.columns.leader, diary.teamLeaderName)
   addKeyValue(sheet, he.manager.diaries.workOrder, diary.workOrderNumber)
+  addKeyValue(
+    sheet,
+    he.manager.diaries.technician,
+    diary.accompanyingTechnicianName
+      ? `${diary.accompanyingTechnicianName}${
+          diary.accompanyingTechnicianPhone ? ` · ${diary.accompanyingTechnicianPhone}` : ""
+        }`
+      : he.manager.diaries.technicianNone
+  )
   sheet.addRow([])
 
   addSectionTitle(sheet, he.leader.form.workersTitle)
@@ -105,6 +114,15 @@ export async function buildDiaryExcelBuffer(diary: ManagerDiaryDetail) {
     horizontal: "right",
     wrapText: true,
   }
+  sheet.addRow([])
+
+  addSectionTitle(sheet, he.leader.form.signatureTitle)
+  const signatureName = diary.siteManagerName?.trim() ?? ""
+  addKeyValue(
+    sheet,
+    he.leader.form.signatureNameLabel,
+    signatureName || he.leader.form.readOnlySignature
+  )
 
   sheet.columns = [{ width: 22 }, { width: 28 }, { width: 12 }, { width: 12 }]
   return workbook.xlsx.writeBuffer()

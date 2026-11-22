@@ -8,7 +8,10 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Cable,
+  CircuitBoard,
   ClipboardList,
+  FileSpreadsheet,
   FileText,
   Filter,
   MapPin,
@@ -61,7 +64,7 @@ import {
   type ManagerDiarySummary,
   type WorkDiarySearchFilters,
 } from "@/data/manager"
-import { findCompany, findCustomer } from "@/data/lookups"
+import { findCompany, findComponent, findCustomer, findDomain } from "@/data/lookups"
 import {
   emptyReportFilters,
   resolveFilterLabels,
@@ -77,9 +80,17 @@ import {
 } from "@/features/manager/mobile-filters/picker-overlay"
 import { useDevSession } from "@/features/dev-role/dev-session"
 import { diaryFileBasename } from "@/features/manager/reports/diary-filename"
-import { reportStamp } from "@/features/manager/reports/download"
+import { buildEndpointReport } from "@/data/endpoint-reports"
+import { endpointListBasename, reportListBasename } from "@/features/manager/reports/download"
 import { buildDiariesZipBlob, diariesZipBasename, exportDiariesZip } from "@/features/manager/reports/export-diaries-zip"
+import { exportDiaryExcel } from "@/features/manager/reports/export-diary-excel"
 import { buildDiaryPdfBytes, exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
+import { exportEndpointReportExcel } from "@/features/manager/reports/export-endpoint-excel"
+import {
+  buildEndpointReportPdfBytes,
+  exportEndpointReportPdf,
+} from "@/features/manager/reports/export-endpoint-pdf"
+import { exportReportExcel } from "@/features/manager/reports/export-excel"
 import { buildReportPdfBytes, exportReportPdf } from "@/features/manager/reports/export-pdf"
 import {
   canShareFilesWithWhatsApp,
@@ -105,8 +116,8 @@ const filterControlClass =
 
 const HEBREW_WEEKDAYS = ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"] as const
 
-type ExportMode = "list" | "contents"
-type ExportChannel = "pdf" | "whatsapp"
+type ExportMode = "list" | "contents" | "endpoints"
+type ExportChannel = "excel" | "pdf" | "whatsapp"
 
 export function ReportsScreen() {
   const query = useManagerDb()
@@ -235,6 +246,12 @@ function ReportsReady({ db }: { db: MockDb }) {
     setExportOpen(true)
   }
 
+  const buildSelectedEndpointReport = () =>
+    buildEndpointReport(db, selectedDiaries, {
+      domainIds: filters.domainIds,
+      componentIds: filters.componentIds,
+    })
+
   const runExport = async () => {
     if (selectedDiaries.length === 0) {
       toast.info(he.manager.reports.exportNeedSelection)
@@ -251,6 +268,44 @@ function ReportsReady({ db }: { db: MockDb }) {
     setExporting(true)
     try {
       const pdfOptions = { generatedBy: session.user?.fullName ?? "" }
+      if (mode === "endpoints") {
+        const report = buildSelectedEndpointReport()
+        if (report.details.length === 0) {
+          toast.info(he.manager.reports.exportEndpointsEmpty)
+          return
+        }
+        const { labels } = buildAppliedExport(db, filters, selectedDiaries)
+        if (channel === "whatsapp") {
+          const bytes = await buildEndpointReportPdfBytes(report, labels, pdfOptions)
+          const file = new File(
+            [new Uint8Array(bytes)],
+            `${endpointListBasename()}.pdf`,
+            { type: "application/pdf" }
+          )
+          if (whatsappNativeShare) {
+            try {
+              await shareFileNative(file, WHATSAPP_MESSAGE)
+              toast.success(he.manager.reports.whatsAppDone)
+            } catch (error) {
+              if (error instanceof DOMException && error.name === "AbortError") return
+              downloadShareFile(file)
+              openWhatsAppChat(WHATSAPP_MESSAGE)
+              toast.success(he.manager.reports.whatsAppDoneAttach)
+            }
+          } else {
+            downloadShareFile(file)
+            toast.success(he.manager.reports.whatsAppDoneAttach)
+          }
+        } else if (channel === "excel") {
+          await exportEndpointReportExcel(report, labels)
+          toast.success(he.manager.reports.exportEndpointsDone)
+        } else {
+          await exportEndpointReportPdf(report, labels, pdfOptions)
+          toast.success(he.manager.reports.exportEndpointsDone)
+        }
+        return
+      }
+
       if (channel === "whatsapp") {
         let file: File
         if (mode === "list") {
@@ -258,7 +313,7 @@ function ReportsReady({ db }: { db: MockDb }) {
           const bytes = await buildReportPdfBytes(result, labels, pdfOptions)
           file = new File(
             [new Uint8Array(bytes)],
-            `topesh-report-${result.type}-${reportStamp()}.pdf`,
+            `${reportListBasename()}.pdf`,
             { type: "application/pdf" }
           )
         } else {
@@ -297,6 +352,23 @@ function ReportsReady({ db }: { db: MockDb }) {
           downloadShareFile(file)
           toast.success(he.manager.reports.whatsAppDoneAttach)
         }
+      } else if (channel === "excel") {
+        if (mode === "list") {
+          const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
+          await exportReportExcel(result, labels)
+          toast.success(he.manager.reports.exportExcelDone)
+        } else {
+          const details = selectedDiaries
+            .map((summary) => getManagerDiary(db, summary.id))
+            .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail))
+          if (details.length === 0) {
+            toast.info(he.manager.reports.exportNeedSelection)
+            return
+          }
+          if (details.length === 1) await exportDiaryExcel(details[0]!)
+          else await exportDiariesZip(details, "excel")
+          toast.success(he.manager.reports.exportDiariesDone)
+        }
       } else if (mode === "list") {
         const { result, labels } = buildAppliedExport(db, filters, selectedDiaries)
         await exportReportPdf(result, labels, pdfOptions)
@@ -317,7 +389,9 @@ function ReportsReady({ db }: { db: MockDb }) {
       toast.error(
         channel === "whatsapp"
           ? he.manager.reports.whatsAppFailed
-          : he.manager.reports.exportPdfFailed
+          : channel === "excel"
+            ? he.manager.reports.exportExcelFailed
+            : he.manager.reports.exportPdfFailed
       )
     } finally {
       setExporting(false)
@@ -330,6 +404,7 @@ function ReportsReady({ db }: { db: MockDb }) {
       selectedCount={selectedDiaries.length}
       canExport={canExport}
       exporting={exporting}
+      onExportExcel={() => openExportModal("excel")}
       onExportPdf={() => openExportModal("pdf")}
       onSendWhatsApp={() => openExportModal("whatsapp")}
     />
@@ -474,6 +549,7 @@ function ReportsReady({ db }: { db: MockDb }) {
                       canExport={canExport}
                       exporting={exporting}
                       onCancel={exitSelectMode}
+                      onExportExcel={() => openExportModal("excel")}
                       onExportPdf={() => openExportModal("pdf")}
                       onSendWhatsApp={() => openExportModal("whatsapp")}
                     />
@@ -509,16 +585,8 @@ function ReportsReady({ db }: { db: MockDb }) {
         <Dialog open={exportOpen} onOpenChange={setExportOpen}>
           <DialogContent className="sm:max-w-md" dir="rtl">
             <DialogHeader>
-              <DialogTitle>
-                {exportChannel === "whatsapp"
-                  ? he.manager.reports.exportModalTitleWhatsApp
-                  : he.manager.reports.exportModalTitlePdf}
-              </DialogTitle>
-              <DialogDescription>
-                {exportChannel === "whatsapp"
-                  ? he.manager.reports.exportModalBodyWhatsApp
-                  : he.manager.reports.exportModalBody}
-              </DialogDescription>
+              <DialogTitle>{exportModalTitle(exportChannel)}</DialogTitle>
+              <DialogDescription>{exportModalBody(exportChannel)}</DialogDescription>
             </DialogHeader>
             <ExportModePicker exportMode={exportMode} onExportModeChange={setExportMode} />
             <DialogFooter className="sm:justify-start">
@@ -537,15 +605,9 @@ function ReportsReady({ db }: { db: MockDb }) {
         <Drawer open={exportOpen} onOpenChange={setExportOpen} showSwipeHandle swipeDirection="down">
           <DrawerContent className="overflow-hidden" dir="rtl">
             <DrawerHeader className="text-start md:text-start">
-              <DrawerTitle className="text-start">
-                {exportChannel === "whatsapp"
-                  ? he.manager.reports.exportModalTitleWhatsApp
-                  : he.manager.reports.exportModalTitlePdf}
-              </DrawerTitle>
+              <DrawerTitle className="text-start">{exportModalTitle(exportChannel)}</DrawerTitle>
               <DrawerDescription className="text-start">
-                {exportChannel === "whatsapp"
-                  ? he.manager.reports.exportModalBodyWhatsApp
-                  : he.manager.reports.exportModalBody}
+                {exportModalBody(exportChannel)}
               </DrawerDescription>
             </DrawerHeader>
             <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
@@ -598,6 +660,12 @@ function ExportModePicker({
         hint={he.manager.reports.exportModeContentsHint}
         onClick={() => onExportModeChange("contents")}
       />
+      <ExportModeOption
+        pressed={exportMode === "endpoints"}
+        title={he.manager.reports.exportModeEndpoints}
+        hint={he.manager.reports.exportModeEndpointsHint}
+        onClick={() => onExportModeChange("endpoints")}
+      />
     </div>
   )
 }
@@ -639,11 +707,23 @@ function ExportModeOption({
   )
 }
 
+function exportModalTitle(channel: ExportChannel) {
+  if (channel === "whatsapp") return he.manager.reports.exportModalTitleWhatsApp
+  if (channel === "excel") return he.manager.reports.exportModalTitleExcel
+  return he.manager.reports.exportModalTitlePdf
+}
+
+function exportModalBody(channel: ExportChannel) {
+  if (channel === "whatsapp") return he.manager.reports.exportModalBodyWhatsApp
+  return he.manager.reports.exportModalBody
+}
+
 function ResultsToolbar({
   matchingCount,
   selectedCount,
   canExport,
   exporting,
+  onExportExcel,
   onExportPdf,
   onSendWhatsApp,
 }: {
@@ -651,6 +731,7 @@ function ResultsToolbar({
   selectedCount: number
   canExport: boolean
   exporting: boolean
+  onExportExcel: () => void
   onExportPdf: () => void
   onSendWhatsApp: () => void
 }) {
@@ -660,6 +741,12 @@ function ResultsToolbar({
       aria-label={he.manager.reports.resultsTitle}
       className="inline-flex max-w-full overflow-x-auto rounded-md border border-border bg-card"
     >
+      <ToolbarAction
+        label={exporting ? "..." : he.manager.reports.exportExcel}
+        icon={FileSpreadsheet}
+        disabled={!canExport}
+        onClick={onExportExcel}
+      />
       <ToolbarAction
         label={exporting ? "..." : he.manager.reports.exportPdf}
         icon={FileText}
@@ -689,6 +776,7 @@ function MobileSelectToolbar({
   canExport,
   exporting,
   onCancel,
+  onExportExcel,
   onExportPdf,
   onSendWhatsApp,
 }: {
@@ -696,6 +784,7 @@ function MobileSelectToolbar({
   canExport: boolean
   exporting: boolean
   onCancel: () => void
+  onExportExcel: () => void
   onExportPdf: () => void
   onSendWhatsApp: () => void
 }) {
@@ -720,6 +809,20 @@ function MobileSelectToolbar({
       >
         <X className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         {he.manager.reports.exportCancel}
+      </button>
+      <button
+        type="button"
+        disabled={!canExport}
+        className={cn(
+          "pressable inline-flex min-h-11 min-w-0 flex-[1.2] items-center justify-center gap-1.5 rounded-md px-1.5 text-sm font-medium whitespace-nowrap transition-colors",
+          canExport
+            ? "text-primary hover:bg-background/60"
+            : "cursor-not-allowed text-muted-foreground/50"
+        )}
+        onClick={onExportExcel}
+      >
+        <FileSpreadsheet className="size-3.5 shrink-0" aria-hidden />
+        {exporting ? "..." : he.manager.reports.exportExcelShort}
       </button>
       <button
         type="button"
@@ -816,7 +919,7 @@ function FilterPanel({
         compact ? "overflow-visible border-0 bg-transparent px-0 py-0" : "overflow-x-auto"
       )}
     >
-      <div className={cn("grid gap-3", compact ? "grid-cols-1" : "min-w-[56rem] grid-cols-4")}>
+      <div className={cn("grid gap-3", compact ? "grid-cols-1" : "min-w-[72rem] grid-cols-5")}>
         <FilterField label={he.manager.reports.from} icon={CalendarDays}>
           <FilterDate
             title={he.manager.reports.from}
@@ -871,6 +974,22 @@ function FilterPanel({
             values={filters.teamLeaderIds}
             options={options.leaders}
             onValuesChange={(teamLeaderIds) => onPatch({ teamLeaderIds })}
+          />
+        </FilterField>
+        <FilterField label={he.manager.reports.domain} icon={CircuitBoard}>
+          <MultiFilterSelect
+            title={he.manager.reports.domain}
+            values={filters.domainIds}
+            options={options.domains}
+            onValuesChange={(domainIds) => onPatch({ domainIds })}
+          />
+        </FilterField>
+        <FilterField label={he.manager.reports.component} icon={Cable}>
+          <MultiFilterSelect
+            title={he.manager.reports.component}
+            values={filters.componentIds}
+            options={options.components}
+            onValuesChange={(componentIds) => onPatch({ componentIds })}
           />
         </FilterField>
         <div className={cn("flex min-w-0 items-stretch gap-2", compact && "flex-col")}>
@@ -1553,6 +1672,14 @@ function buildAppliedExport(
         .map((id) => db.users.find((user) => user.id === id)?.fullName ?? "")
         .filter(Boolean)
         .join(", "),
+      domain: applied.domainIds
+        .map((id) => findDomain(db, id)?.name ?? "")
+        .filter(Boolean)
+        .join(", "),
+      component: applied.componentIds
+        .map((id) => findComponent(db, id)?.name ?? "")
+        .filter(Boolean)
+        .join(", "),
     },
   }
 }
@@ -1565,7 +1692,9 @@ function hasActiveSheetFilter(filters: WorkDiarySearchFilters) {
       filters.customerIds.length > 0 ||
       filters.siteIds.length > 0 ||
       filters.teamLeaderIds.length > 0 ||
-      filters.statuses.length > 0
+      filters.statuses.length > 0 ||
+      filters.domainIds.length > 0 ||
+      filters.componentIds.length > 0
   )
 }
 
@@ -1585,6 +1714,15 @@ function normalizeCascade(db: MockDb, filters: WorkDiarySearchFilters): WorkDiar
     next = {
       ...next,
       siteIds: next.siteIds.filter((id) => siteMatchesFilters(db, id, next)),
+    }
+  }
+  if (next.domainIds.length > 0) {
+    next = {
+      ...next,
+      componentIds: next.componentIds.filter((id) => {
+        const component = findComponent(db, id)
+        return Boolean(component && next.domainIds.includes(component.domainId))
+      }),
     }
   }
   return next

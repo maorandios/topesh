@@ -5,7 +5,7 @@ import { Flame, Mail, Phone, UserRound } from "lucide-react"
 import { usePathname } from "next/navigation"
 import { AppLink } from "@/components/shell/app-link"
 import { isNavActive, leaderNav, managerNav, type NavItem } from "@/components/shell/nav"
-import { useDevSession } from "@/features/dev-role/dev-session"
+import { useDevSession, useHasHydrated } from "@/features/dev-role/dev-session"
 import { SettingsSheet, type SettingsRole } from "@/features/settings/settings-panel"
 import { he } from "@/i18n/he"
 import { cn } from "cn"
@@ -17,11 +17,13 @@ function isSettingsHref(href: string) {
 export function SideNav({ variant }: { variant: "manager" | "leader" }) {
   const pathname = usePathname()
   const session = useDevSession()
+  const hydrated = useHasHydrated()
   const items: NavItem[] = variant === "manager" ? managerNav : leaderNav
   const settingsRole: SettingsRole = variant === "manager" ? "manager" : "teamLeader"
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  const user = session.user
+  // Session is localStorage-backed; keep SSR/hydration placeholders until mounted.
+  const user = hydrated ? session.user : null
   const detail =
     variant === "manager" ? user?.email?.trim() || "—" : user?.phone?.trim() || "—"
 

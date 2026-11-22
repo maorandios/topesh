@@ -12,6 +12,7 @@ import {
   Building2,
   Cable,
   CheckCircle2,
+  FileSpreadsheet,
   FileText,
   Files,
   FolderKanban,
@@ -81,6 +82,7 @@ import type { MockDb } from "@/data/seed"
 import type { DiaryStatus } from "@/domain/types"
 import { useDevSession } from "@/features/dev-role/dev-session"
 import { MobileFilterPicker } from "@/features/manager/mobile-filters/picker-overlay"
+import { exportDiaryExcel } from "@/features/manager/reports/export-diary-excel"
 import { exportDiaryPdf } from "@/features/manager/reports/export-diary-pdf"
 import { he } from "@/i18n/he"
 import { formatDateTime, formatQuantity, formatWorkDate } from "@/lib/format"
@@ -179,13 +181,7 @@ export function DiaryPanel({
   }
   return (
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle swipeDirection="down">
-      <DrawerContent
-        className={cn(
-          "h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0",
-          panelSurfaceClass
-        )}
-        style={panelSurfaceStyle}
-      >
+      <DrawerContent className={cn("overflow-hidden", panelSurfaceClass)} style={panelSurfaceStyle}>
         <DrawerHeader className="sr-only">
           <DrawerTitle>{title}</DrawerTitle>
         </DrawerHeader>
@@ -410,6 +406,17 @@ function DiaryBody({
           void exportDiaryPdf(diary, { generatedBy: session.user?.fullName ?? "" })
             .then(() => notice.success(he.manager.panel.exportPdfDone))
             .catch(() => notice.error(he.manager.panel.exportPdfFailed))
+        }),
+    },
+    {
+      key: "export-excel",
+      label: he.manager.panel.exportExcel,
+      icon: FileSpreadsheet,
+      onClick: () =>
+        runAction(() => {
+          void exportDiaryExcel(diary)
+            .then(() => notice.success(he.manager.panel.exportExcelDone))
+            .catch(() => notice.error(he.manager.panel.exportExcelFailed))
         }),
     },
     ...(!desktop

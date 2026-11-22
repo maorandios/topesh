@@ -2,8 +2,10 @@
 
 import {
   createContext,
+  Suspense,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -20,31 +22,46 @@ type ManagerCreateContextValue = {
 
 const ManagerCreateContext = createContext<ManagerCreateContextValue | null>(null)
 
+/** Keeps useSearchParams inside Suspense so layout chrome never unmounts. */
+function CreateQueryBridge({
+  onFlagChange,
+}: {
+  onFlagChange: (createRequested: boolean) => void
+}) {
+  const params = useSearchParams()
+  const createRequested = params.get("create") === "1"
+
+  useEffect(() => {
+    onFlagChange(createRequested)
+  }, [createRequested, onFlagChange])
+
+  return null
+}
+
 export function ManagerCreateProvider({ children }: { children: ReactNode }) {
   const [userOpen, setUserOpen] = useState(false)
+  const [urlCreate, setUrlCreate] = useState(false)
   const query = useManagerDb()
-  const params = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
-  const createRequested = params.get("create") === "1"
-  const open = userOpen || createRequested
+  const open = userOpen || urlCreate
 
   const openCreate = useCallback(() => setUserOpen(true), [])
   const closeCreate = useCallback(() => {
     setUserOpen(false)
-    if (params.get("create") === "1") {
-      router.replace(pathname, { scroll: false })
-    }
-  }, [params, pathname, router])
+    setUrlCreate(false)
+    router.replace(pathname, { scroll: false })
+  }, [pathname, router])
 
   const onOpenChange = useCallback(
     (next: boolean) => {
       setUserOpen(next)
-      if (!next && params.get("create") === "1") {
+      if (!next) {
+        setUrlCreate(false)
         router.replace(pathname, { scroll: false })
       }
     },
-    [params, pathname, router]
+    [pathname, router]
   )
 
   const value = useMemo(
@@ -54,6 +71,9 @@ export function ManagerCreateProvider({ children }: { children: ReactNode }) {
 
   return (
     <ManagerCreateContext.Provider value={value}>
+      <Suspense fallback={null}>
+        <CreateQueryBridge onFlagChange={setUrlCreate} />
+      </Suspense>
       {children}
       {query.status === "ready" ? (
         <DiaryCreatePanel db={query.db} open={open} onOpenChange={onOpenChange} />

@@ -1,5 +1,5 @@
 import type { ReportFilterLabels, ReportResult, ReportType } from "@/data/reports"
-import { downloadBlob, reportStamp } from "@/features/manager/reports/download"
+import { downloadBlob, reportListBasename } from "@/features/manager/reports/download"
 import {
   createHebrewPdf,
   drawDocumentHeader,
@@ -162,6 +162,6 @@ export async function exportReportPdf(
   const bytes = await buildReportPdfBytes(result, labels, options)
   downloadBlob(
     new Blob([new Uint8Array(bytes)], { type: "application/pdf" }),
-    `topesh-report-${result.type}-${reportStamp()}.pdf`
+    `${reportListBasename()}.pdf`
   )
 }

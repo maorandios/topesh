@@ -1,21 +1,13 @@
 import { PageFrame } from "@/components/motion/page-frame"
 import { AppLink } from "@/components/shell/app-link"
+import { DataLoading } from "@/components/shell/data-loading"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { resetLeaderStore } from "@/data/browser-store"
 import { he } from "@/i18n/he"
 
+/** Shared route/table loading state — spinner + "טוען נתונים". Keeps layout chrome visible. */
 export function LeaderLoading() {
-  return (
-    <PageFrame>
-      <div className="flex flex-col gap-3 px-4 py-5" aria-busy="true">
-        <span className="sr-only">{he.leader.loading}</span>
-        <Skeleton className="h-7 w-40" />
-        <Skeleton className="h-28 w-full rounded-2xl" />
-        <Skeleton className="h-28 w-full rounded-2xl" />
-      </div>
-    </PageFrame>
-  )
+  return <DataLoading />
 }
 
 export function LeaderStoreError() {

@@ -104,7 +104,7 @@ export function DiaryCreatePanel({
     <Drawer open={open} onOpenChange={onOpenChange} showSwipeHandle swipeDirection="down">
       <DrawerContent
         className={cn(
-          "h-[100dvh] max-h-[100dvh] overflow-hidden rounded-none border-0",
+          "overflow-hidden",
           panelSurfaceClass
         )}
         style={panelSurfaceStyle}

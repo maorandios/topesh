@@ -42,11 +42,8 @@ import { activeDomainsFrom, findComponent, findDomain } from "@/data/lookups"
 import { saveLeaderDraft, submitLeaderDiary, useLeaderDiary } from "@/data/browser-store"
 import { addQuantities, parseQuantityInput } from "@/data/quantity"
 import type { DiaryDraft, LeaderDiaryDetail } from "@/data/repository"
-import {
-  LeaderLoading,
-  LeaderMessage,
-  LeaderStoreError,
-} from "@/features/leader/leader-states"
+import { DataLoading } from "@/components/shell/data-loading"
+import { LeaderMessage, LeaderStoreError } from "@/features/leader/leader-states"
 import { he } from "@/i18n/he"
 import { formatDateTime, formatQuantity, formatWorkDate } from "@/lib/format"
 import { cn } from "cn"
@@ -108,11 +105,7 @@ export function LeaderDiaryPanel({
 function DiaryPanelBody({ diaryId, onClose }: { diaryId: string; onClose: () => void }) {
   const query = useLeaderDiary(diaryId)
   if (query.status === "loading") {
-    return (
-      <div className="flex min-h-48 flex-1 items-center justify-center p-4">
-        <LeaderLoading />
-      </div>
-    )
+    return <DataLoading framed={false} />
   }
   if (query.status === "error") {
     return (

@@ -28,7 +28,7 @@ import { he } from "@/i18n/he"
 import { formatWorkDate } from "@/lib/format"
 import { cn } from "cn"
 
-type QuickFilter = DiaryStatus
+type QuickFilter = "all" | DiaryStatus
 
 type DateFilters = {
   from: string
@@ -41,6 +41,7 @@ const filterControlClass =
   "h-[calc(2.25rem*1.1*1.1)] w-full min-w-0 rounded-md border border-border bg-card px-4 text-sm text-foreground shadow-none outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-card"
 
 const quickFilterOptions: Array<[QuickFilter, string]> = [
+  ["all", he.leader.history.all],
   ["submitted", he.leader.status.submitted],
   ["pending", he.leader.status.pending],
   ["cancelled", he.leader.status.cancelled],
@@ -49,7 +50,7 @@ const quickFilterOptions: Array<[QuickFilter, string]> = [
 function filterDiaries(
   diaries: LeaderDiarySummary[],
   search: string,
-  quickFilter: QuickFilter | null,
+  quickFilter: QuickFilter,
   dateFilters: DateFilters
 ) {
   const needle = search.trim().toLowerCase()
@@ -59,7 +60,7 @@ function filterDiaries(
   if (rangeInvalid) return []
 
   return diaries.filter((diary) => {
-    if (quickFilter && diary.status !== quickFilter) return false
+    if (quickFilter !== "all" && diary.status !== quickFilter) return false
     if (dateFilters.from && diary.workDate < dateFilters.from) return false
     if (dateFilters.to && diary.workDate > dateFilters.to) return false
     if (!needle) return true
@@ -76,7 +77,7 @@ export function LeaderHomeScreen() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [search, setSearch] = useState("")
-  const [quickFilter, setQuickFilter] = useState<QuickFilter | null>(null)
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all")
   const [dateFilters, setDateFilters] = useState<DateFilters>(emptyDates())
   const [draftFilters, setDraftFilters] = useState<DateFilters>(emptyDates())
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
@@ -144,12 +145,6 @@ export function LeaderHomeScreen() {
   const clearDateFilters = () => {
     setDateFilters(emptyDates())
     setDraftFilters(emptyDates())
-  }
-
-  const resetAll = () => {
-    setQuickFilter(null)
-    setSearch("")
-    clearDateFilters()
   }
 
   return (
@@ -245,15 +240,6 @@ export function LeaderHomeScreen() {
                   />
                 </button>
               ))}
-              <button
-                type="button"
-                role="radio"
-                aria-checked={false}
-                className="pressable relative flex min-h-11 min-w-0 flex-1 flex-col items-center justify-center px-1.5 text-center text-sm text-foreground/80 transition-colors hover:text-foreground"
-                onClick={resetAll}
-              >
-                <span className="whitespace-nowrap">{he.manager.dashboard.reset}</span>
-              </button>
             </div>
           </div>
 

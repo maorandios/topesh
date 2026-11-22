@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs"
 import type { ReportFilterLabels, ReportResult, ReportType } from "@/data/reports"
-import { downloadBlob, reportStamp } from "@/features/manager/reports/download"
+import { downloadBlob, reportListBasename } from "@/features/manager/reports/download"
 import { he } from "@/i18n/he"
 import { formatWorkDateNumeric } from "@/lib/format"
 
@@ -38,7 +38,7 @@ export async function exportReportExcel(result: ReportResult, labels: ReportFilt
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   })
-  downloadBlob(blob, `topesh-report-${result.type}-${reportStamp()}.xlsx`)
+  downloadBlob(blob, `${reportListBasename()}.xlsx`)
 }
 
 function applyRtl(sheet: ExcelJS.Worksheet) {

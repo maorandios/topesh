@@ -182,6 +182,8 @@ export type WorkDiarySearchFilters = {
   workOrderNumber: string
   teamLeaderIds: string[]
   statuses: DiaryStatus[]
+  domainIds: string[]
+  componentIds: string[]
 }
 
 export const emptyWorkDiarySearchFilters = (): WorkDiarySearchFilters => ({
@@ -193,6 +195,8 @@ export const emptyWorkDiarySearchFilters = (): WorkDiarySearchFilters => ({
   workOrderNumber: "",
   teamLeaderIds: [],
   statuses: [],
+  domainIds: [],
+  componentIds: [],
 })
 
 export function validateWorkDiarySearchDates(from: string, to: string): string | null {
@@ -205,24 +209,13 @@ export function validateWorkDiarySearchDates(from: string, to: string): string |
 /** AND-filter Work Diaries for the Manager reports search screen. */
 export function searchWorkDiaries(db: MockDb, filters: WorkDiarySearchFilters): ManagerDiarySummary[] {
   if (validateWorkDiarySearchDates(filters.from, filters.to)) return []
-  const workOrderQuery = filters.workOrderNumber.trim()
-  return listManagerDiaries(db).filter((diary) => {
-    if (filters.statuses.length > 0 && !filters.statuses.includes(diary.status)) return false
-    if (filters.from && diary.workDate < filters.from) return false
-    if (filters.to && diary.workDate > filters.to) return false
-    if (filters.companyIds.length > 0 && !filters.companyIds.includes(diary.companyId)) return false
-    if (filters.customerIds.length > 0 && !filters.customerIds.includes(diary.customerId)) return false
-    if (filters.siteIds.length > 0 && !filters.siteIds.includes(diary.siteId)) return false
-    if (filters.teamLeaderIds.length > 0 && !filters.teamLeaderIds.includes(diary.teamLeaderId)) return false
-    if (workOrderQuery && !diary.workOrderNumber.includes(workOrderQuery)) return false
-    return true
-  })
+  return listManagerDiaries(db).filter((diary) => diaryMatchesSearchFilters(db, diary, filters))
 }
 
 export function workDiarySearchOptions(db: MockDb, filters: WorkDiarySearchFilters) {
   const diaries = listManagerDiaries(db)
   const scoped = (omit: Partial<Record<keyof WorkDiarySearchFilters, true>>) =>
-    diaries.filter((diary) => diaryMatchesSearchFilters(diary, filters, omit))
+    diaries.filter((diary) => diaryMatchesSearchFilters(db, diary, filters, omit))
 
   const companies = uniqueOptions(
     scoped({ companyIds: true }).map((diary) => ({
@@ -286,10 +279,31 @@ export function workDiarySearchOptions(db: MockDb, filters: WorkDiarySearchFilte
       .map((user) => ({ value: user.id, label: user.fullName }))
   )
 
-  return { companies, customers, sites, leaders }
+  const domains = uniqueOptions(
+    domainOptionsFromDiaries(db, scoped({ domainIds: true, componentIds: true })),
+    filters.domainIds.map((id) => ({
+      value: id,
+      label: findDomain(db, id)?.name ?? id,
+    })),
+    db.domains.map((item) => ({ value: item.id, label: item.name }))
+  )
+
+  const components = uniqueOptions(
+    componentOptionsFromDiaries(db, scoped({ componentIds: true }), filters.domainIds),
+    filters.componentIds.map((id) => ({
+      value: id,
+      label: findComponent(db, id)?.name ?? id,
+    })),
+    db.components
+      .filter((item) => filters.domainIds.length === 0 || filters.domainIds.includes(item.domainId))
+      .map((item) => ({ value: item.id, label: item.name }))
+  )
+
+  return { companies, customers, sites, leaders, domains, components }
 }
 
 function diaryMatchesSearchFilters(
+  db: MockDb,
   diary: ManagerDiarySummary,
   filters: WorkDiarySearchFilters,
   omit: Partial<Record<keyof WorkDiarySearchFilters, true>> = {}
@@ -319,7 +333,62 @@ function diaryMatchesSearchFilters(
   if (!omit.workOrderNumber && workOrderQuery && !diary.workOrderNumber.includes(workOrderQuery)) {
     return false
   }
+  if (
+    (!omit.domainIds && filters.domainIds.length > 0) ||
+    (!omit.componentIds && filters.componentIds.length > 0)
+  ) {
+    const domainIds = omit.domainIds ? [] : filters.domainIds
+    const componentIds = omit.componentIds ? [] : filters.componentIds
+    if (!diaryHasDomainOrComponent(db, diary.id, domainIds, componentIds)) return false
+  }
   return true
+}
+
+function diaryHasDomainOrComponent(
+  db: MockDb,
+  diaryId: string,
+  domainIds: string[],
+  componentIds: string[]
+) {
+  if (domainIds.length === 0 && componentIds.length === 0) return true
+  return db.items.some((item) => {
+    if (item.diaryId !== diaryId) return false
+    const component = findComponent(db, item.componentId)
+    if (!component) return false
+    if (componentIds.length > 0 && !componentIds.includes(component.id)) return false
+    if (domainIds.length > 0 && !domainIds.includes(component.domainId)) return false
+    return true
+  })
+}
+
+function domainOptionsFromDiaries(db: MockDb, diaries: ManagerDiarySummary[]) {
+  const diaryIds = new Set(diaries.map((diary) => diary.id))
+  const options: { value: string; label: string }[] = []
+  for (const item of db.items) {
+    if (!diaryIds.has(item.diaryId)) continue
+    const component = findComponent(db, item.componentId)
+    const domain = component ? findDomain(db, component.domainId) : null
+    if (!domain) continue
+    options.push({ value: domain.id, label: domain.name })
+  }
+  return options
+}
+
+function componentOptionsFromDiaries(
+  db: MockDb,
+  diaries: ManagerDiarySummary[],
+  domainIds: string[]
+) {
+  const diaryIds = new Set(diaries.map((diary) => diary.id))
+  const options: { value: string; label: string }[] = []
+  for (const item of db.items) {
+    if (!diaryIds.has(item.diaryId)) continue
+    const component = findComponent(db, item.componentId)
+    if (!component) continue
+    if (domainIds.length > 0 && !domainIds.includes(component.domainId)) continue
+    options.push({ value: component.id, label: component.name })
+  }
+  return options
 }
 
 function uniqueOptions(

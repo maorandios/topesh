@@ -1,4 +1,5 @@
 import { Suspense } from "react"
+import { DataLoading } from "@/components/shell/data-loading"
 import { PullToRefresh } from "@/components/shell/pull-to-refresh"
 import { SideNav, SideNavFallback } from "@/components/shell/side-nav"
 import { RoleGate } from "@/features/dev-role/role-gate"
@@ -20,7 +21,9 @@ export default function LeaderLayout({
           <LeaderMobileTopBar />
           <PullToRefresh>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:pt-[env(safe-area-inset-top)]">
-              <LeaderFrame>{children}</LeaderFrame>
+              <LeaderFrame>
+                <Suspense fallback={<DataLoading />}>{children}</Suspense>
+              </LeaderFrame>
             </div>
           </PullToRefresh>
         </div>
